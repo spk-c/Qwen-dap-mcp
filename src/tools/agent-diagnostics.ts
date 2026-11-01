@@ -1,3 +1,8 @@
+import type { DebugProtocol } from '@vscode/debugprotocol';
+import type { GuardedDapSession } from '../dap/guarded-session.js';
+import type { RuntimeSnapshot, RuntimeSnapshotOptions } from '../dap/session.js';
+import type { FrameEvidence, IntelligentCrashDiagnosis, IntelligentDiagnosisOptions, VerificationBaseline } from '../diagnostics/intelligent-diagnosis.js';
+import type { AutonomousAgentState } from '../diagnostics/autonomous-cycle.js';
 import * as z from 'zod/v4';
 import { buildCodeLldbLaunchConfiguration, discoverCodeLldb } from '../adapters/codelldb.js';
 import { buildGdbDapLaunchConfiguration, discoverGdbDap } from '../adapters/gdb-dap.js';
@@ -98,14 +103,14 @@ const workflowSchema = z.object({
     agentState: autonomousAgentStateSchema.optional().describe('Opaque autonomous state returned by the previous autonomous call; pass it back unchanged to continue the bounded cycle.'),
     maxIterations: z.number().int().positive().max(10).default(3).describe('Maximum autonomous fix/reproduce iterations allowed when starting stage=autonomous.'),
 }).describe('Controls one-shot diagnosis, explicit verification, or the bounded autonomous crash workflow.');
-function result(value) {
+function result(value: unknown) {
     return structuredResult(value);
 }
-function errorResult(error) {
+function errorResult(error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     return { content: [{ type: 'text', text: message }], isError: true };
 }
-function terminalOutcomeDiagnosis(outcome) {
+function terminalOutcomeDiagnosis(outcome: {event: string; body?: unknown}) {
     const body = outcome.body;
     const exitCode = typeof body?.exitCode === 'number' ? body.exitCode : undefined;
     const abnormalExit = exitCode !== undefined && exitCode !== 0;
@@ -132,7 +137,7 @@ function terminalOutcomeDiagnosis(outcome) {
             ],
     };
 }
-function dedupeVariables(variables) {
+function dedupeVariables(variables: DebugProtocol.Variable[]): DebugProtocol.Variable[] {
     const seen = new Set();
     const output = [];
     for (const variable of variables) {
@@ -144,7 +149,7 @@ function dedupeVariables(variables) {
     }
     return output;
 }
-async function captureFrameEvidence(session, frame, index, options, includeDisassembly) {
+async function captureFrameEvidence(session: GuardedDapSession, frame: DebugProtocol.StackFrame, index: number, options: RuntimeSnapshotOptions, includeDisassembly: boolean): Promise<FrameEvidence> {
     const maxVariables = options.maxVariablesPerScope ?? 100;
     const collectionErrors = [];
     let scopes = [];
@@ -196,14 +201,14 @@ async function captureFrameEvidence(session, frame, index, options, includeDisas
         ...(collectionErrors.length === 0 ? {} : { collectionErrors }),
     };
 }
-function mergedAnalysisOptions(analysis, program, cwd) {
+function mergedAnalysisOptions(analysis: IntelligentDiagnosisOptions | undefined, program?: string, cwd?: string): IntelligentDiagnosisOptions {
     return {
         ...(analysis ?? {}),
         ...(program ? { program } : {}),
         ...(cwd ? { cwd } : {}),
     };
 }
-async function diagnoseSnapshot(session, snapshot, snapshotOptions, analysisOptions) {
+async function diagnoseSnapshot(session: GuardedDapSession, snapshot: RuntimeSnapshot, snapshotOptions: RuntimeSnapshotOptions, analysisOptions: IntelligentDiagnosisOptions): Promise<IntelligentCrashDiagnosis> {
     const base = analyzeRuntimeSnapshot(snapshot);
     const selection = selectProjectFrame(snapshot.stack, analysisOptions);
     const callerDepth = analysisOptions.callerDepth ?? 3;
@@ -236,7 +241,7 @@ async function diagnoseSnapshot(session, snapshot, snapshotOptions, analysisOpti
     }
     return buildIntelligentDiagnosis(snapshot, base, selection, evidence);
 }
-async function captureDiagnosticSnapshot(session, options: import('../dap/session.js').RuntimeSnapshotOptions = {}, analysisOptions = {}) {
+async function captureDiagnosticSnapshot(session: GuardedDapSession, options: RuntimeSnapshotOptions = {}, analysisOptions: IntelligentDiagnosisOptions = {}) {
     const snapshot = await session.runtimeSnapshot({
         ...options,
         includeDisassembly: options.includeDisassembly ?? true,
@@ -248,14 +253,14 @@ async function captureDiagnosticSnapshot(session, options: import('../dap/sessio
         diagnosis: await diagnoseSnapshot(session, snapshot, options, analysisOptions),
     };
 }
-function terminalForVerification(outcome) {
+function terminalForVerification(outcome: {event: string; body?: unknown}) {
     const body = outcome.body;
     return {
         event: outcome.event,
         ...(typeof body?.exitCode === 'number' ? { exitCode: body.exitCode } : {}),
     };
 }
-function workflowMetadata(stage, baseline, diagnosis, terminal, agentState, maxIterations) {
+function workflowMetadata(stage: 'diagnose'|'verify'|'autonomous', baseline: VerificationBaseline|undefined, diagnosis?: IntelligentCrashDiagnosis, terminal?: {event: 'exited'|'terminated'; exitCode?: number}, agentState?: AutonomousAgentState, maxIterations?: number) {
     if (stage === 'verify' && !baseline) {
         throw new DapError('debug_this_crash workflow.stage="verify" requires the verificationBaseline returned by the original diagnosis.');
     }
@@ -331,7 +336,7 @@ function workflowMetadata(stage, baseline, diagnosis, terminal, agentState, maxI
             : {}),
     };
 }
-async function resetOwnedSessionAfterFailure(session, error) {
+async function resetOwnedSessionAfterFailure(session: GuardedDapSession, error: unknown): Promise<never> {
     try {
         await session.reset();
     }
@@ -342,7 +347,7 @@ async function resetOwnedSessionAfterFailure(session, error) {
     }
     throw error;
 }
-export function registerAgentDiagnosticTools(server, session) {
+export function registerAgentDiagnosticTools(server, session: GuardedDapSession) {
     server.registerTool('debug_diagnose_stop', {
         title: 'Diagnose Current Debug Stop',
         description: 'Diagnose an already stopped live or postmortem debug session without changing execution state. Use this when a debugger has captured the failure and you want project-frame selection, crash classification, operand/register/variable bindings, call-chain provenance, ranked hypotheses, and a fix/rebuild/reproduce/verify plan; use debug_snapshot instead when only raw evidence is needed. The tool is read-only and returns both the bounded snapshot and the derived diagnosis, including collection limitations when optional debugger evidence is unavailable.',
