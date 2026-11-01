@@ -1,5 +1,3 @@
-import type { McpServer } from '@modelcontextprotocol/server';
-import type { GuardedDapSession } from '../dap/guarded-session.js';
 import * as z from 'zod/v4';
 import { discoverCodeLldb } from '../adapters/codelldb.js';
 import { buildCodeLldbDumpConfiguration } from '../adapters/codelldb-dump.js';
@@ -118,7 +116,7 @@ function wrap(handler) {
         }
     };
 }
-export function registerDumpTools(server: McpServer, session: GuardedDapSession) {
+export function registerDumpTools(server, session) {
     server.registerTool('debug_open_dump', {
         title: 'Open Native Crash Dump',
         description: 'Open a local native core/minidump with CodeLLDB, upstream LLVM lldb-dap, or GNU GDB DAP and capture bounded postmortem evidence. Use this when the failure is already recorded and no target process should execute; use debug_run_to_stop or debug_this_crash for a live reproduction instead. The tool starts only the selected local debugger adapter, never launches or resumes the crashed program, treats the dump as read-only, and returns the initial stack/locals/registers plus optional modules and disassembly.',
