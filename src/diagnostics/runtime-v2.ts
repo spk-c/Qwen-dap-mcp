@@ -1,8 +1,43 @@
 import { createHash } from 'node:crypto';
-function digest(value) {
+import type { DebugProtocol } from '@vscode/debugprotocol';
+
+type RuntimeSnapshot = {
+    frame: DebugProtocol.StackFrame;
+    stack: DebugProtocol.StackFrame[];
+    locals: DebugProtocol.Variable[];
+    registers: DebugProtocol.Variable[];
+    stopped?: DebugProtocol.StoppedEvent['body'];
+    exception?: DebugProtocol.ExceptionInfoResponse['body'];
+    modules?: DebugProtocol.Module[];
+};
+type EvidenceItem = { kind: string; weight: number; summary: string; source: string };
+type FailureHypothesis = {
+    id: string;
+    title: string;
+    evidenceScore: number;
+    supporting: EvidenceItem[];
+    contradicting: EvidenceItem[];
+    nextEvidence: string[];
+};
+type HypothesisOptions = {
+    snapshot: RuntimeSnapshot;
+    outputLines?: string[];
+    memoryHazards?: Array<{ kind?: string }>;
+    apiAnalysis?: { risks?: Array<{ kind: string }> };
+    stackIntegrity?: ReturnType<typeof analyzeStackIntegrity>;
+};
+type ThreadObservation = ReturnType<typeof classifyThreadObservation>;
+type LockEdge = { from: number; to: number; resource: string; evidence: string };
+type CrashFamilyReport = {
+    label?: string;
+    fingerprint?: string;
+    fingerprintsV2?: { family?: string; semantic?: string; exact?: string };
+};
+
+function digest(value: unknown): string {
     return createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
-function normalizeFunctionName(name) {
+function normalizeFunctionName(name: string): string {
     return name
         .replace(/\+0x[0-9a-f]+$/i, '')
         .replace(/\s+at\s+0x[0-9a-f]+$/i, '')
@@ -10,12 +45,12 @@ function normalizeFunctionName(name) {
         .trim()
         .toLowerCase();
 }
-function sourceIdentity(frame) {
+function sourceIdentity(frame: DebugProtocol.StackFrame): string {
     const path = frame.source?.path;
     const basename = path ? (path.split(/[\\/]/).pop() ?? path) : frame.source?.name ?? '';
     return basename.toLowerCase();
 }
-function exceptionText(snapshot) {
+function exceptionText(snapshot: RuntimeSnapshot): string {
     const exception = snapshot.exception;
     const stopped = snapshot.stopped;
     return [
@@ -27,7 +62,7 @@ function exceptionText(snapshot) {
         stopped?.text,
     ].filter((value) => typeof value === 'string').join(' ').toLowerCase();
 }
-function classifyException(text) {
+function classifyException(text: string): string {
     if (/use-after-free/.test(text))
         return 'use-after-free';
     if (/heap-buffer-overflow|buffer overflow|out.of.bounds/.test(text))
@@ -46,7 +81,7 @@ function classifyException(text) {
         return 'data-race';
     return text ? 'exception-or-signal' : 'unknown-stop';
 }
-function variableHazards(snapshot) {
+function variableHazards(snapshot: RuntimeSnapshot): string[] {
     const hazards = new Set<string>();
     const patterns: Array<[RegExp, string]> = [
         [/feeefeee/i, 'freed-heap-pattern'],
@@ -66,7 +101,7 @@ function variableHazards(snapshot) {
     }
     return [...hazards].sort();
 }
-function sanitizerKinds(lines) {
+function sanitizerKinds(lines: string[]): string[] {
     const joined = lines.join('\n').toLowerCase();
     const kinds = new Set<string>();
     if (joined.includes('addresssanitizer'))
@@ -87,7 +122,7 @@ function sanitizerKinds(lines) {
         kinds.add('data-race');
     return [...kinds].sort();
 }
-export function crashFingerprintsV2(snapshot, outputLines = []) {
+export function crashFingerprintsV2(snapshot: RuntimeSnapshot, outputLines: string[] = []) {
     const exceptionClass = classifyException(exceptionText(snapshot));
     const hazards = variableHazards(snapshot);
     const sanitizers = sanitizerKinds(outputLines);
@@ -129,7 +164,7 @@ export function crashFingerprintsV2(snapshot, outputLines = []) {
         note: 'exact keeps source lines, semantic suppresses path/address noise, and family intentionally collapses nearby failures into broader runtime families.',
     };
 }
-function parseAddress(value) {
+function parseAddress(value: string | undefined): bigint | undefined {
     if (!value)
         return undefined;
     const match = value.replace(/\`/g, '').match(/0x([0-9a-f]+)/i);
@@ -142,7 +177,7 @@ function parseAddress(value) {
         return undefined;
     }
 }
-function parseModuleRange(range) {
+function parseModuleRange(range: string | undefined): { start: bigint; end: bigint } | undefined {
     if (!range)
         return undefined;
     const matches = [...range.replace(/\`/g, '').matchAll(/0x([0-9a-f]+)/ig)];
@@ -159,7 +194,7 @@ function parseModuleRange(range) {
         return undefined;
     }
 }
-export function moduleForAddress(modules, address) {
+export function moduleForAddress(modules: DebugProtocol.Module[] | undefined, address: string) {
     const target = parseAddress(address);
     if (target === undefined || !modules?.length)
         return undefined;
@@ -170,11 +205,11 @@ export function moduleForAddress(modules, address) {
     }
     return undefined;
 }
-export function analyzeStackIntegrity(snapshot, outputLines = []) {
+export function analyzeStackIntegrity(snapshot: RuntimeSnapshot, outputLines: string[] = []) {
     const findings = [];
     const modules = snapshot.modules;
     let outsideKnownModules = 0;
-    const seenIps = new Map();
+    const seenIps = new Map<string, number>();
     for (const [index, frame] of snapshot.stack.entries()) {
         const ip = frame.instructionPointerReference;
         if (ip)
@@ -246,7 +281,7 @@ const API_SIGNATURES = [
     { match: /(?:^|::)read(?:$|\()/i, name: 'read', params: ['fd', 'buffer', 'count'], riskChecks: [{ index: 1, kind: 'null-buffer' }] },
     { match: /(?:^|::)write(?:$|\()/i, name: 'write', params: ['fd', 'buffer', 'count'], riskChecks: [{ index: 1, kind: 'null-buffer' }] },
 ];
-export function analyzeKnownApiCall(snapshot, abiArguments) {
+export function analyzeKnownApiCall(snapshot: RuntimeSnapshot, abiArguments: Array<{ register?: string; value?: string }>) {
     const signature = API_SIGNATURES.find((candidate) => candidate.match.test(snapshot.frame.name));
     if (!signature) {
         return {
@@ -278,21 +313,21 @@ export function analyzeKnownApiCall(snapshot, abiArguments) {
         note: 'Argument carriers follow the selected ABI; semantic validity still depends on the exact call site and target platform.',
     };
 }
-function evidence(kind, weight, summary, source) {
+function evidence(kind: string, weight: number, summary: string, source: string): EvidenceItem {
     return { kind, weight, summary, source };
 }
-function score(items, contradictions) {
+function score(items: EvidenceItem[], contradictions: EvidenceItem[]): number {
     const value = items.reduce((sum, item) => sum + item.weight, 0)
         - contradictions.reduce((sum, item) => sum + item.weight, 0);
     return Math.max(0, Math.min(100, value));
 }
-export function buildFailureHypotheses(options) {
+export function buildFailureHypotheses(options: HypothesisOptions): FailureHypothesis[] {
     const outputLines = options.outputLines ?? [];
     const text = `${exceptionText(options.snapshot)}\n${outputLines.join('\n').toLowerCase()}`;
     const hazardKinds = new Set<string>((options.memoryHazards ?? []).map((item) => String(item.kind ?? '')));
     const stackIntegrity = options.stackIntegrity ?? analyzeStackIntegrity(options.snapshot, outputLines);
-    const hypotheses = [];
-    const add = (id, title, supporting, contradicting, nextEvidence) => {
+    const hypotheses: FailureHypothesis[] = [];
+    const add = (id: string, title: string, supporting: EvidenceItem[], contradicting: EvidenceItem[], nextEvidence: string[]) => {
         if (!supporting.length)
             return;
         hypotheses.push({ id, title, evidenceScore: score(supporting, contradicting), supporting, contradicting, nextEvidence });
@@ -354,10 +389,10 @@ export function buildFailureHypotheses(options) {
     ]);
     return hypotheses.sort((a, b) => b.evidenceScore - a.evidenceScore);
 }
-export function buildBreakpointPlan(hypotheses, snapshot) {
-    const functions = new Set();
+export function buildBreakpointPlan(hypotheses: FailureHypothesis[], snapshot: RuntimeSnapshot) {
+    const functions = new Set<string>();
     const reasons = [];
-    const add = (name, reason, hypothesis) => {
+    const add = (name: string, reason: string, hypothesis: string) => {
         if (!functions.has(name)) {
             functions.add(name);
             reasons.push({ function: name, reason, hypothesis });
@@ -395,7 +430,7 @@ export function buildBreakpointPlan(hypotheses, snapshot) {
         note: 'This is a breakpoint plan only. Installation remains an explicit debugger-control action so the user/agent can review side effects and scope.',
     };
 }
-function parseOwnerThreadId(name, value) {
+function parseOwnerThreadId(name: string, value: string): number | undefined {
     if (!/(?:owner|owning).*(?:thread|tid)|(?:thread|tid).*owner/i.test(name))
         return undefined;
     const match = value.match(/\b(\d{1,10})\b/);
@@ -404,7 +439,7 @@ function parseOwnerThreadId(name, value) {
     const id = Number(match[1]);
     return Number.isSafeInteger(id) && id > 0 ? id : undefined;
 }
-export function classifyThreadObservation(sample, thread, stack, variables) {
+export function classifyThreadObservation(sample: number, thread: DebugProtocol.Thread, stack: DebugProtocol.StackFrame[], variables: DebugProtocol.Variable[]) {
     const top = stack[0];
     const stackText = stack.slice(0, 6).map((frame) => frame.name).join(' ').toLowerCase();
     const waitKind = /mutex|criticalsection|srwlock|futex|lock|semaphore/.test(stackText) ? 'lock'
@@ -437,17 +472,17 @@ export function classifyThreadObservation(sample, thread, stack, variables) {
         resources,
     };
 }
-function detectCycle(edges) {
-    const adjacency = new Map();
+function detectCycle(edges: LockEdge[]): LockEdge[] | undefined {
+    const adjacency = new Map<number, LockEdge[]>();
     for (const edge of edges) {
         const bucket = adjacency.get(edge.from) ?? [];
         bucket.push(edge);
         adjacency.set(edge.from, bucket);
     }
     for (const start of adjacency.keys()) {
-        const path = [];
-        const visiting = new Set();
-        const walk = (node) => {
+        const path: LockEdge[] = [];
+        const visiting = new Set<number>();
+        const walk = (node: number): LockEdge[] | undefined => {
             if (visiting.has(node)) {
                 const cycleStart = path.findIndex((edge) => edge.from === node);
                 return cycleStart >= 0 ? path.slice(cycleStart) : [...path];
@@ -469,8 +504,8 @@ function detectCycle(edges) {
     }
     return undefined;
 }
-export function buildLockOwnerGraph(observations) {
-    const latestByThread = new Map();
+export function buildLockOwnerGraph(observations: ThreadObservation[]) {
+    const latestByThread = new Map<number, ThreadObservation>();
     for (const observation of observations)
         latestByThread.set(observation.threadId, observation);
     const edges = [...latestByThread.values()].flatMap((observation) => observation.resources.flatMap((resource) => resource.ownerThreadId && resource.ownerThreadId !== observation.threadId
@@ -493,8 +528,8 @@ export function buildLockOwnerGraph(observations) {
         ],
     };
 }
-export function compareCrashFamilies(reports) {
-    const byFamily = new Map();
+export function compareCrashFamilies(reports: CrashFamilyReport[]) {
+    const byFamily = new Map<string, CrashFamilyReport[]>();
     for (const report of reports) {
         const key = report.fingerprintsV2?.family ?? report.fingerprint ?? 'unknown';
         const bucket = byFamily.get(key) ?? [];
