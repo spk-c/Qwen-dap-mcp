@@ -21,7 +21,7 @@ Start Qwen Code and use the debugger tools with a trusted local debugger adapter
 
 ## Important scope and compatibility
 
-- The npm package `@slp-dev1/qwen-dap-mcp` is upstream and **does not contain this fork's fixes**. This fork is not published to npm; the release includes a self-contained package archive *without bundled dependencies*, and users should use the GitHub Qwen extension install workflow.
+- The npm package `@slp-dev1/qwen-dap-mcp` is upstream and **does not contain this fork's fixes**. This fork is not published to npm; the release archive contains the runtime and metadata but does not bundle npm dependencies; users should use the GitHub Qwen extension installation workflow.
 - The imported repository did not contain the original TypeScript source files. This fork maintains JavaScript source and regenerates declarations from JavaScript.
 - GDB versions 14–17 can debug live targets, but its native DAP `coreFile` attach requires **GDB 18.1+**. Use LLDB-DAP for older GDB installations.
 - No benchmark claims or guarantees of universal debugger compatibility are made. Only authorized, controlled test targets are used in CI.
