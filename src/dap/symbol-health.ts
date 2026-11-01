@@ -1,16 +1,17 @@
+import type { DebugProtocol } from '@vscode/debugprotocol';
 const UNRESOLVED_FRAME_NAME = /^(?:\?\?|unknown|<unknown>|<unresolved>|0x[0-9a-f]+)$/i;
 const NEGATIVE_SYMBOL_STATUS = /(?:not\s+(?:loaded|found|available)|missing|no\s+(?:symbols?|debug)|unavailable|failed|error)/i;
 const POSITIVE_SYMBOL_STATUS = /(?:loaded|available|found|present|resolved|success)/i;
-function frameHasName(frame) {
+function frameHasName(frame: DebugProtocol.StackFrame): boolean {
     const name = frame.name?.trim();
     return Boolean(name && !UNRESOLVED_FRAME_NAME.test(name));
 }
-function frameHasSource(frame) {
+function frameHasSource(frame: DebugProtocol.StackFrame): boolean {
     const source = frame.source;
     const hasSourceIdentity = Boolean(source?.path?.trim() || source?.name?.trim());
     return hasSourceIdentity && Number.isFinite(frame.line) && frame.line > 0;
 }
-function moduleSymbolState(module) {
+function moduleSymbolState(module: DebugProtocol.Module): 'missing' | 'available' | 'unknown' {
     const status = module.symbolStatus?.trim() ?? '';
     if (status && NEGATIVE_SYMBOL_STATUS.test(status))
         return 'missing';
@@ -20,7 +21,7 @@ function moduleSymbolState(module) {
         return 'available';
     return 'unknown';
 }
-export function assessSymbolHealth(stack, modules) {
+export function assessSymbolHealth(stack: DebugProtocol.StackFrame[], modules?: DebugProtocol.Module[]) {
     const namedFrames = stack.filter(frameHasName).length;
     const sourceMappedFrames = stack.filter(frameHasSource).length;
     const top = stack[0];
@@ -55,7 +56,7 @@ export function assessSymbolHealth(stack, modules) {
     else {
         status = 'unknown';
     }
-    const limitations = [];
+    const limitations: string[] = [];
     if (modules === undefined) {
         limitations.push('Loaded-module symbol status was not collected for this snapshot.');
     }
