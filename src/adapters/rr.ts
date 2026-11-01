@@ -1,10 +1,9 @@
-// @ts-nocheck
 import { spawnSync } from 'node:child_process';
 import { existsSync, statSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { DapError } from '../dap/errors.js';
 import { resolveExistingDirectory, resolveExistingFile } from '../local-path.js';
-function isFile(path) {
+function isFile(path: string): boolean {
     try {
         return statSync(path).isFile();
     }
@@ -12,7 +11,7 @@ function isFile(path) {
         return false;
     }
 }
-function findOnPath(command) {
+function findOnPath(command: string): string | undefined {
     const result = spawnSync('which', [command], {
         encoding: 'utf8',
         shell: false,
@@ -25,7 +24,7 @@ function findOnPath(command) {
     const first = result.stdout.split(/\r?\n/).map((line) => line.trim()).find(Boolean);
     return first && isFile(first) ? first : undefined;
 }
-function probeVersion(command) {
+function probeVersion(command: string): string {
     const result = spawnSync(command, ['--version'], {
         encoding: 'utf8',
         shell: false,
@@ -45,7 +44,18 @@ function probeVersion(command) {
     }
     return version.slice(0, 300);
 }
-export function discoverRr(options = {}) {
+export type RrDiscoveryOptions = { env?: NodeJS.ProcessEnv; explicitPath?: string };
+export type RrReplayPlanOptions = { rrPath?: string; traceDir: string; port: number };
+export type RrRecordingOptions = {
+    rrPath?: string;
+    program: string;
+    cwd?: string;
+    traceDir?: string;
+    timeoutMs?: number;
+    args?: string[];
+    env?: NodeJS.ProcessEnv;
+};
+export function discoverRr(options: RrDiscoveryOptions = {}) {
     if (process.platform !== 'linux') {
         throw new DapError('rr integration is supported only on Linux hosts.');
     }
@@ -69,7 +79,7 @@ export function discoverRr(options = {}) {
         return { command, version: probeVersion(command), source: 'path', searched };
     throw new DapError(`rr was not found. Install rr, set RR_PATH, or pass rrPath. Searched: ${searched.join(', ')}`);
 }
-export function buildRrReplayPlan(options) {
+export function buildRrReplayPlan(options: RrReplayPlanOptions) {
     const rr = discoverRr({ ...(options.rrPath ? { explicitPath: options.rrPath } : {}) });
     const traceDir = resolveExistingDirectory(options.traceDir, 'rr trace directory');
     if (!Number.isSafeInteger(options.port) || options.port < 1 || options.port > 65535) {
@@ -89,7 +99,7 @@ export function buildRrReplayPlan(options) {
         safety: 'The plan is loopback-only and does not execute arbitrary debugger command strings.',
     };
 }
-export function recordWithRr(options) {
+export function recordWithRr(options: RrRecordingOptions) {
     const rr = discoverRr({ ...(options.rrPath ? { explicitPath: options.rrPath } : {}) });
     const program = resolveExistingFile(options.program, 'rr recording program');
     const cwd = options.cwd
@@ -99,7 +109,7 @@ export function recordWithRr(options) {
     if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1_000 || timeoutMs > 600_000) {
         throw new DapError('rr recording timeoutMs must be between 1000 and 600000.');
     }
-    let traceDir;
+    let traceDir: string | undefined;
     if (options.traceDir?.trim()) {
         traceDir = resolve(options.traceDir);
         resolveExistingDirectory(dirname(traceDir), 'rr trace parent directory');
@@ -123,7 +133,7 @@ export function recordWithRr(options) {
         maxBuffer: 512 * 1024,
     });
     if (result.error) {
-        const timeout = result.error.code === 'ETIMEDOUT';
+        const timeout = (result.error as NodeJS.ErrnoException).code === 'ETIMEDOUT';
         throw new DapError(timeout
             ? `rr recording exceeded the ${timeoutMs} ms bound.`
             : `rr recording failed: ${result.error.message}`);

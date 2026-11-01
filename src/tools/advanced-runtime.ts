@@ -1,4 +1,3 @@
-// @ts-nocheck
 import * as z from 'zod/v4';
 import { analyzeKnownApiCall, analyzeStackIntegrity, buildBreakpointPlan, buildFailureHypotheses, crashFingerprintsV2, } from '../diagnostics/runtime-v2.js';
 import { traceValue, findObservedValue } from './value-tracing.js';
@@ -93,7 +92,7 @@ export function parseSanitizerEvidence(lines) {
     const findings = [];
     const seen = new Set();
     const joined = lines.join('\n');
-    const patterns = [
+    const patterns: Array<[RegExp, string]> = [
         [/ERROR:\s*AddressSanitizer:\s*([^\n]+)/i, 'asan'],
         [/AddressSanitizer:\s*([^\n]+)/i, 'asan'],
         [/UndefinedBehaviorSanitizer|runtime error:\s*([^\n]+)/i, 'ubsan'],
@@ -149,7 +148,7 @@ function fnv1a64(input) {
     }
     return hash.toString(16).padStart(16, '0');
 }
-export function buildCrashReport(snapshot, status, options = {}) {
+export function buildCrashReport(snapshot, status, options: { includeOutputTail?: boolean; abi?: string; redactPaths?: boolean } = {}) {
     const rawFrameKey = stableFrameKey(snapshot);
     const rawExceptionKey = exceptionKey(snapshot);
     const dapOutput = options.includeOutputTail === false ? [] : status.recentEvents

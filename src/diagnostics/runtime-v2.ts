@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { createHash } from 'node:crypto';
 function digest(value) {
     return createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -48,8 +47,8 @@ function classifyException(text) {
     return text ? 'exception-or-signal' : 'unknown-stop';
 }
 function variableHazards(snapshot) {
-    const hazards = new Set();
-    const patterns = [
+    const hazards = new Set<string>();
+    const patterns: Array<[RegExp, string]> = [
         [/feeefeee/i, 'freed-heap-pattern'],
         [/dddddddd/i, 'freed-debug-heap-pattern'],
         [/cdcdcdcd|cccccccc|baadf00d/i, 'uninitialized-pattern'],
@@ -69,7 +68,7 @@ function variableHazards(snapshot) {
 }
 function sanitizerKinds(lines) {
     const joined = lines.join('\n').toLowerCase();
-    const kinds = new Set();
+    const kinds = new Set<string>();
     if (joined.includes('addresssanitizer'))
         kinds.add('asan');
     if (joined.includes('threadsanitizer'))
@@ -290,7 +289,7 @@ function score(items, contradictions) {
 export function buildFailureHypotheses(options) {
     const outputLines = options.outputLines ?? [];
     const text = `${exceptionText(options.snapshot)}\n${outputLines.join('\n').toLowerCase()}`;
-    const hazardKinds = new Set((options.memoryHazards ?? []).map((item) => String(item.kind ?? '')));
+    const hazardKinds = new Set<string>((options.memoryHazards ?? []).map((item) => String(item.kind ?? '')));
     const stackIntegrity = options.stackIntegrity ?? analyzeStackIntegrity(options.snapshot, outputLines);
     const hypotheses = [];
     const add = (id, title, supporting, contradicting, nextEvidence) => {

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import * as z from 'zod/v4';
 import { buildCodeLldbAttachConfiguration, buildCodeLldbLaunchConfiguration, discoverCodeLldb, } from '../adapters/codelldb.js';
 import { buildGdbDapLaunchConfiguration, buildGdbDapPidAttachConfiguration, discoverGdbDap, } from '../adapters/gdb-dap.js';
@@ -108,7 +107,9 @@ function createObservationWait(session, observeMs) {
         session.connection.off('adapterExit', onAdapterExit);
         session.connection.off('adapterError', onAdapterError);
     };
-    const promise = new Promise((resolve, reject) => {
+    const promise = new Promise<
+        {kind: 'event'; event: {event: string; body?: any}} | {kind: 'timeout'}
+    >((resolve, reject) => {
         resolvePromise = resolve;
         handler = (event) => {
             if (!['stopped', 'exited', 'terminated'].includes(event.event))
@@ -332,7 +333,13 @@ async function collectFrameVariables(session, frame, frameIndex, maxVariablesPer
         ...(collectionErrors.length === 0 ? {} : { collectionErrors }),
     };
 }
-export async function captureAllThreadHangEvidence(session, captureOptions = {}, analysisOptions = {}) {
+export async function captureAllThreadHangEvidence(session, captureOptions: {
+    maxThreads?: number;
+    stackLevels?: number;
+    maxVariablesPerFrame?: number;
+    framesWithVariables?: number;
+    captureTimeoutMs?: number;
+} = {}, analysisOptions = {}) {
     const maxThreads = captureOptions.maxThreads ?? 32;
     const stackLevels = captureOptions.stackLevels ?? 24;
     const maxVariablesPerFrame = captureOptions.maxVariablesPerFrame ?? 50;

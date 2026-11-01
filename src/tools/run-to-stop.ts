@@ -1,4 +1,3 @@
-// @ts-nocheck
 import * as z from 'zod/v4';
 import { DapError, DapTimeoutError } from '../dap/errors.js';
 import { LOCAL_TARGET_EXECUTION_ANNOTATIONS } from './tool-annotations.js';
@@ -20,7 +19,7 @@ function createOutcomeWait(session, timeoutMs) {
         session.connection.off('adapterExit', onAdapterExit);
         session.connection.off('adapterError', onAdapterError);
     };
-    const promise = new Promise((resolve, reject) => {
+    const promise = new Promise<{event: string; body?: {threadId?: number}} | undefined>((resolve, reject) => {
         resolvePromise = resolve;
         handler = (event) => {
             if (!OUTCOME_EVENTS.has(event.event))

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { assessProjectFrames, } from './intelligent-diagnosis.js';
 const WAIT_RULES = [
     {
@@ -186,7 +185,7 @@ function buildPointerProvenance(evidence) {
         byAddress.set(observation.address, group);
     }
     const groups = [...byAddress.entries()].map(([address, items]) => {
-        const threadIds = [...new Set(items.map((item) => item.threadId))].sort((a, b) => a - b);
+        const threadIds = [...new Set(items.map((item) => item.threadId))].sort((a, b) => Number(a) - Number(b));
         const aliases = [...new Set(items.map((item) => item.variableName))].sort();
         const synchronizationRelevant = items.some((item) => item.role === 'synchronization');
         const sharedAcrossThreads = threadIds.length > 1;

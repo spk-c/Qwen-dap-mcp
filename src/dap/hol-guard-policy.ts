@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { accessSync, constants, existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
@@ -229,7 +228,7 @@ function runBridge(pythonCommand, bridgePath, timeoutMs, action) {
         let stderr = '';
         let outputBytes = 0;
         let settled = false;
-        const finish = (error, decision) => {
+        const finish = (error: Error | undefined, decision?: any) => {
             if (settled)
                 return;
             settled = true;
@@ -280,7 +279,7 @@ function runBridge(pythonCommand, bridgePath, timeoutMs, action) {
     });
 }
 export function buildHolGuardEnvironmentFingerprint(overrides) {
-    const merged = {};
+    const merged: Record<string, string> = {};
     for (const [key, value] of Object.entries(mergeEnvironment(process.env, overrides))) {
         if (typeof value === 'string')
             merged[key] = value;
@@ -390,7 +389,7 @@ function sanitizeEnvironmentContainer(value) {
     }
     return redactedValue(value);
 }
-function sanitizeValue(value, keyHint) {
+function sanitizeValue(value, keyHint?: string) {
     const normalizedKey = keyHint === undefined ? undefined : normalizedArgumentKey(keyHint);
     if (normalizedKey && SENSITIVE_ARGUMENT_KEYS.has(normalizedKey))
         return redactedValue(value);
@@ -504,10 +503,15 @@ function decisionReason(decision) {
             : '';
     return `HOL Guard '${decision.action}': ${decision.reason}${approvalHint}`;
 }
-function isPolicyPromise(value) {
-    return typeof value.then === 'function';
+function isPolicyPromise<T>(value: T | Promise<T>): value is Promise<T> {
+    return typeof (value as Promise<T>).then === 'function';
 }
-export function createHolGuardEvaluator(options = {}) {
+export function createHolGuardEvaluator(options: {
+    enabled?: boolean;
+    pythonCommand?: string;
+    bridgePath?: string;
+    timeoutMs?: number;
+} = {}) {
     const enabled = options.enabled ?? parseEnabled(process.env.QWEN_DAP_MCP_HOL_GUARD);
     if (!enabled) {
         return { enabled: false, evaluate: async () => ({ allow: true, action: 'allow', reason: 'HOL Guard integration disabled' }) };
@@ -580,7 +584,11 @@ export async function requireHolGuardAdapterStart(evaluator, options) {
     const effectiveEnv = mergeEnvironment(process.env, options.env);
     const resolvedCommand = resolveAdapterExecutable(options.command, options.cwd, effectiveEnv);
     const executableHash = resolvedCommand ? hashExecutable(resolvedCommand) : undefined;
-    const context = {
+    const context: typeof baseContext & {
+        adapterResolvedCommand?: string;
+        adapterExecutableHash?: string;
+        adapterIdentityHash?: string;
+    } = {
         ...baseContext,
         ...(resolvedCommand ? { adapterResolvedCommand: resolvedCommand } : {}),
         ...(executableHash ? { adapterExecutableHash: executableHash } : {}),

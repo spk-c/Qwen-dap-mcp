@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { DapError } from './errors.js';
 import { normalizeEnvironmentOverrides } from './environment.js';
@@ -21,11 +20,14 @@ import { DapSession, } from './session.js';
  */
 export class GuardedDapSession extends DapSession {
     postmortem = false;
-    lifecycleContext = new AsyncLocalStorage();
-    activeLifecycleOperation;
-    holGuardEvaluator;
-    holGuardExecutionContext;
-    constructor(options = {}) {
+    lifecycleContext = new AsyncLocalStorage<symbol>();
+    activeLifecycleOperation?: { owner: symbol; name: string };
+    holGuardEvaluator: ReturnType<typeof createHolGuardEvaluator>;
+    holGuardExecutionContext?: Awaited<ReturnType<typeof requireHolGuardAdapterStart>>;
+    constructor(options: {
+        holGuardEvaluator?: ReturnType<typeof createHolGuardEvaluator>;
+        dapPolicyMode?: string;
+    } = {}) {
         super();
         this.holGuardEvaluator = options.holGuardEvaluator ?? createHolGuardEvaluator();
         this.connection.setRequestPolicy(createGuardedDapRequestPolicy(this.holGuardEvaluator, options.dapPolicyMode, () => this.holGuardExecutionContext));
@@ -52,7 +54,9 @@ export class GuardedDapSession extends DapSession {
                 const guardedOptions = {
                     ...options,
                     ...(options.env ? { env: normalizeEnvironmentOverrides(options.env) } : {}),
-                    ...(executionContext.adapterResolvedCommand
+                    ...('adapterResolvedCommand' in executionContext
+                        && typeof executionContext.adapterResolvedCommand === 'string'
+                        && executionContext.adapterResolvedCommand.length > 0
                         ? { command: executionContext.adapterResolvedCommand }
                         : {}),
                 };
@@ -96,7 +100,7 @@ export class GuardedDapSession extends DapSession {
      * competing MCP request receives a deterministic error instead of racing the
      * shared DAP connection and session state.
      */
-    async runExclusiveLifecycle(operation, action) {
+    async runExclusiveLifecycle<T>(operation: string, action: () => T | Promise<T>): Promise<T> {
         const currentOwner = this.lifecycleContext.getStore();
         const active = this.activeLifecycleOperation;
         if (active) {
@@ -118,10 +122,10 @@ export class GuardedDapSession extends DapSession {
             }
         });
     }
-    markPostmortem() {
+    markPostmortem(): void {
         this.postmortem = true;
     }
-    isPostmortem() {
+    isPostmortem(): boolean {
         return this.postmortem;
     }
     async runtimeSnapshot(options = {}) {
@@ -165,7 +169,7 @@ export class GuardedDapSession extends DapSession {
         this.assertLiveOperation('setDataBreakpoints');
         return super.setDataBreakpoints(breakpoints);
     }
-    assertLiveOperation(operation) {
+    assertLiveOperation(operation: string): void {
         if (this.postmortem) {
             throw new DapError(`Cannot ${operation} in a postmortem crash-dump session. The dump is frozen state; inspect it with debug_snapshot, stack, variables, registers, modules, memory, or disassembly instead.`);
         }
