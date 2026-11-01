@@ -46,3 +46,63 @@ jobs:
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Load core and verify inspection-only enforcement
         run: node --test integration/postmortem.mjs
+
+  current-gdb-core:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install current GDB and C++ compiler
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends gdb g++
+      - name: Generate real core dump from owned fixture
+        shell: bash
+        run: |
+          gdb --version | head -1
+          mkdir -p integration/bin
+          g++ -std=c++17 -g -O0 -fno-omit-frame-pointer integration/fixture/native-debug.cpp -o integration/bin/native-debug
+          gdb --nx --batch --quiet -ex 'set pagination off' -ex 'run' -ex "generate-core-file $PWD/integration/bin/fixture.core" --args "$PWD/integration/bin/native-debug" crash
+          test -s integration/bin/fixture.core
+      - name: Set real GDB core environment
+        shell: bash
+        run: |
+          echo "RUN_POSTMORTEM_TESTS=1" >> "$GITHUB_ENV"
+          echo "NATIVE_DAP_ADAPTER=gdb" >> "$GITHUB_ENV"
+          echo "NATIVE_DAP_PATH=$(command -v gdb)" >> "$GITHUB_ENV"
+          echo "NATIVE_DAP_BINARY=$PWD/integration/bin/native-debug" >> "$GITHUB_ENV"
+          echo "NATIVE_DAP_CORE=$PWD/integration/bin/fixture.core" >> "$GITHUB_ENV"
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: GDB DAP core-file attach and frozen crash inspection
+        run: node --test integration/postmortem.mjs
+
+  fedora-gdb18-core:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile fixture and create real crash core on host
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends gdb g++
+          mkdir -p integration/bin
+          g++ -std=c++17 -g -O0 -fno-omit-frame-pointer integration/fixture/native-debug.cpp -o integration/bin/native-debug
+          gdb --nx --batch --quiet -ex 'set pagination off' -ex 'run' -ex "generate-core-file $PWD/integration/bin/fixture.core" --args "$PWD/integration/bin/native-debug" crash
+          test -s integration/bin/fixture.core
+      - name: Inspect frozen core using official Fedora 44 GDB 18
+        shell: bash
+        run: |
+          docker run --rm -v "$PWD:/work" -w /work fedora:44 bash -euc '
+            dnf -y install gdb nodejs npm
+            gdb --version | head -1
+            gdb --version | head -1 | grep -E " 1[8-9]\.| 2[0-9]\."
+            npm ci --ignore-scripts --no-audit --no-fund
+            RUN_POSTMORTEM_TESTS=1 \
+            NATIVE_DAP_ADAPTER=gdb \
+            NATIVE_DAP_PATH=/usr/bin/gdb \
+            NATIVE_DAP_BINARY=/work/integration/bin/native-debug \
+            NATIVE_DAP_CORE=/work/integration/bin/fixture.core \
+            node --test integration/postmortem.mjs
+          '

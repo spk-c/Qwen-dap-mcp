@@ -41,8 +41,8 @@ export async function openDump(session, options) {
             : adapterKind === 'lldb-dap'
                 ? discoverLldbDap({ ...(options.adapterPath ? { explicitPath: options.adapterPath } : {}) })
                 : discoverCodeLldb({ ...(options.adapterPath ? { explicitPath: options.adapterPath } : {}) });
-        if (adapterKind === 'gdb' && adapter.version.major < 16) {
-            throw new DapError(`GDB ${adapter.version.major} does not support DAP coreFile attach; GDB 16+ is required for native postmortem DAP inspection. Use lldb-dap or upgrade GDB. No adapter was started.`);
+        if (adapterKind === 'gdb' && adapter.version.major < 18) {
+            throw new DapError(`GDB ${adapter.version.major} does not support DAP coreFile attach; GDB 18+ is required for native postmortem DAP inspection. Use lldb-dap or upgrade GDB. No adapter was started.`);
         }
         let adapterStarted = false;
         try {

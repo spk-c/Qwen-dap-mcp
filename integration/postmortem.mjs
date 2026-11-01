@@ -27,8 +27,8 @@ test('open a real core in inspect-only policy and reject resume', {skip: !run, t
       requestTimeoutMs: 25000, includeDisassembly: false,
       includeModules: false, stackLevels: 20, maxVariablesPerScope: 20
     };
-    if (adapter === 'gdb' && discoverGdbDap({explicitPath: adapterPath}).version.major < 16) {
-      await assert.rejects(openDump(session, settings), /GDB 16\+/);
+    if (adapter === 'gdb' && discoverGdbDap({explicitPath: adapterPath}).version.major < 18) {
+      await assert.rejects(openDump(session, settings), /GDB 18\+/);
       assert.equal(session.connection.isRunning, false, 'Unsupported GDB must not spawn');
       return;
     }
