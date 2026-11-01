@@ -24,21 +24,51 @@ function isRecord(value) {
  * Recognize only the dump/core attach shapes emitted by this project.
  * Generic attach remains denied because it can stop/control a live process.
  */
+const CORE_ATTACH_KEYS = new Set(['coreFile', 'program', 'type', 'request', 'name', 'sourceMap']);
+const CODELLDB_DUMP_KEYS = new Set(['type', 'request', 'name', 'targetCreateCommands', 'processCreateCommands', 'sourceMap']);
+const CODELLDB_DUMP_COMMAND = /^target create -c "(?:[^"\\\r\n]|\\["\\])*"(?: "(?:[^"\\\r\n]|\\["\\])*")?$/;
+function hasOnlyKeys(value, keys) {
+    return Object.keys(value).every((key) => keys.has(key));
+}
+function safePath(value) {
+    return typeof value === 'string' && value.trim().length > 0 && !/[\0\r\n]/.test(value);
+}
+function safeSourceMap(value) {
+    if (value === undefined)
+        return true;
+    if (Array.isArray(value))
+        return value.every((entry) => Array.isArray(entry) && entry.length === 2 && entry.every(safePath));
+    return isRecord(value) && Object.entries(value).every(([key, path]) => safePath(key) && safePath(path));
+}
+/**
+ * Narrowly permit only internally generated postmortem attach shapes.
+ * Unknown keys are rejected to prevent live attach or arbitrary debugger
+ * commands being smuggled alongside a legitimate-looking coreFile.
+ */
 export function isInspectOnlyPostmortemAttach(args) {
     if (!isRecord(args))
         return false;
-    // Upstream lldb-dap and GNU GDB core-file flows use an explicit coreFile.
-    if (typeof args.coreFile === 'string' && args.coreFile.trim().length > 0)
-        return true;
-    // CodeLLDB's documented dump flow is technically an attach request, but it
-    // creates a target from a core/minidump and supplies no process-create command.
-    const targetCreateCommands = args.targetCreateCommands;
-    const processCreateCommands = args.processCreateCommands;
-    if (!Array.isArray(targetCreateCommands) || targetCreateCommands.length === 0)
+    if (Object.hasOwn(args, 'coreFile')) {
+        return hasOnlyKeys(args, CORE_ATTACH_KEYS)
+            && safePath(args.coreFile)
+            && (args.program === undefined || safePath(args.program))
+            && (args.type === undefined || args.type === 'lldb-dap')
+            && (args.request === undefined || args.request === 'attach')
+            && (args.name === undefined || typeof args.name === 'string')
+            && safeSourceMap(args.sourceMap);
+    }
+    if (!hasOnlyKeys(args, CODELLDB_DUMP_KEYS)
+        || args.type !== 'lldb'
+        || args.request !== 'attach'
+        || (args.name !== undefined && typeof args.name !== 'string')
+        || !Array.isArray(args.targetCreateCommands)
+        || args.targetCreateCommands.length !== 1
+        || !Array.isArray(args.processCreateCommands)
+        || args.processCreateCommands.length !== 0
+        || !safeSourceMap(args.sourceMap))
         return false;
-    if (!Array.isArray(processCreateCommands) || processCreateCommands.length !== 0)
-        return false;
-    return targetCreateCommands.every((command) => typeof command === 'string' && /^\s*target\s+create\s+-c\s+/i.test(command));
+    return typeof args.targetCreateCommands[0] === 'string'
+        && CODELLDB_DUMP_COMMAND.test(args.targetCreateCommands[0]);
 }
 /**
  * Build a transport-level DAP request policy.

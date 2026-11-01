@@ -13,24 +13,16 @@
     "LICENSE",
     "NOTICE",
     "qwen-extension.json",
-    "server.json",
     "skills",
     "scripts/hol-guard-dap-policy.py"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "dev": "tsx src/index.ts",
-    "test": "tsx --test test/*.test.ts",
-    "test:hol-guard:real": "node test/hol-guard-real-smoke.mjs",
-    "test:codelldb:real": "tsx test/codelldb-real-smoke.ts",
-    "test:codelldb:dump": "tsx test/codelldb-real-dump-smoke.ts",
-    "demo:build": "node scripts/build-crash-lab.mjs",
-    "demo:repro": "node scripts/run-crash-lab.mjs",
-    "demo:hang:build": "node scripts/build-hang-lab.mjs",
-    "demo:hang:repro": "node scripts/run-hang-lab.mjs",
-    "benchmark:report": "node scripts/benchmark-report.mjs",
-    "package:extension": "node scripts/build-extension-package.mjs",
-    "check": "npm run build && npm test && npm run package:extension",
+    "build": "node scripts/build.mjs",
+    "dev": "node src/index.js",
+    "test": "node --test",
+    "check:package": "node scripts/check-package.mjs",
+    "package:extension": "npm run check:package",
+    "check": "npm run build && npm test && npm run check:package",
     "prepublishOnly": "npm run check",
     "start": "node dist/index.js"
   },
@@ -72,14 +64,13 @@
     "sarif"
   ],
   "license": "Apache-2.0",
-  "mcpName": "io.github.SLP-DEV1/qwen-dap-mcp",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/SLP-DEV1/qwen-dap-mcp.git"
+    "url": "git+https://github.com/spk-c/Qwen-dap-mcp.git"
   },
-  "homepage": "https://github.com/SLP-DEV1/qwen-dap-mcp#readme",
+  "homepage": "https://github.com/spk-c/Qwen-dap-mcp#readme",
   "bugs": {
-    "url": "https://github.com/SLP-DEV1/qwen-dap-mcp/issues"
+    "url": "https://github.com/spk-c/Qwen-dap-mcp/issues"
   },
   "publishConfig": {
     "access": "public"
@@ -88,11 +79,5 @@
     "@modelcontextprotocol/server": "^2.0.0",
     "@vscode/debugprotocol": "^1.68.0",
     "zod": "^4.5.4"
-  },
-  "devDependencies": {
-    "@types/node": "^26.4.0",
-    "esbuild": "^0.28.2",
-    "tsx": "^4.23.13",
-    "typescript": "^7.0.2"
   }
 }

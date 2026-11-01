@@ -329,19 +329,31 @@ export class DapConnection extends EventEmitter {
             throw new DapError('DAP adapter is not running');
         }
         const payload = Buffer.from(JSON.stringify(message), 'utf8');
+        if (payload.length > MAX_DAP_PAYLOAD_BYTES)
+            throw new DapError('Outgoing DAP payload exceeds the 16 MiB limit.');
+        if (child.stdin.writableNeedDrain)
+            throw new DapError('DAP adapter stdin is backpressured; refusing to queue another command.');
         const header = Buffer.from(`Content-Length: ${payload.length}\r\n\r\n`, 'ascii');
         child.stdin.write(Buffer.concat([header, payload]));
     }
     onStdout(chunk) {
-        this.buffer = Buffer.concat([this.buffer, chunk]);
-        while (true) {
+        // Process bounded slices instead of buffering an entire stdout burst.
+        for (let offset = 0; offset < chunk.length; offset += 64 * 1024) {
+            const piece = chunk.subarray(offset, offset + 64 * 1024);
+            if (this.buffer.length + piece.length > MAX_DAP_PAYLOAD_BYTES + MAX_HEADER_BYTES + HEADER_SEPARATOR.length) {
+                this.failProtocol(new DapError('DAP frame exceeded the maximum buffered payload size'));
+                return;
+            }
+            this.buffer = Buffer.concat([this.buffer, piece]);
+            while (true) {
             const headerEnd = this.buffer.indexOf(HEADER_SEPARATOR);
             if (headerEnd < 0) {
                 if (this.buffer.length > MAX_HEADER_BYTES) {
                     const error = new DapError(`DAP header exceeded ${MAX_HEADER_BYTES} bytes without a terminator`);
                     this.failProtocol(error);
+                    return;
                 }
-                return;
+                break;
             }
             if (headerEnd > MAX_HEADER_BYTES) {
                 const error = new DapError(`DAP header exceeded ${MAX_HEADER_BYTES} bytes before its terminator`);
@@ -367,7 +379,7 @@ export class DapConnection extends EventEmitter {
             const payloadStart = headerEnd + HEADER_SEPARATOR.length;
             const payloadEnd = payloadStart + contentLength;
             if (this.buffer.length < payloadEnd)
-                return;
+                break;
             const payload = this.buffer.subarray(payloadStart, payloadEnd).toString('utf8');
             this.buffer = this.buffer.subarray(payloadEnd);
             let message;
@@ -392,6 +404,7 @@ export class DapConnection extends EventEmitter {
                     });
                 this.failProtocol(protocolError);
                 return;
+            }
             }
         }
     }

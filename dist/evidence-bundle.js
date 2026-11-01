@@ -1,5 +1,6 @@
-import { existsSync, lstatSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { existsSync, linkSync, lstatSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
+import { basename, dirname, join, resolve } from 'node:path';
 import { DapError } from './dap/errors.js';
 import { resolveExistingDirectory, resolveExistingFile } from './local-path.js';
 const MAX_EVIDENCE_FILE_BYTES = 8 * 1024 * 1024;
@@ -26,8 +27,8 @@ function writableTarget(input, overwrite, format) {
         throw new DapError('Evidence exports must use a dedicated .qwen-dap.json, .qwen-dap.md, or .qwen-dap.sarif filename so this feature cannot act as a general-purpose file writer.');
     }
     resolveExistingDirectory(dirname(target), 'Evidence output directory');
-    if (existsSync(target)) {
-        const stat = lstatSync(target);
+    const stat = lstatSync(target, { throwIfNoEntry: false });
+    if (stat) {
         if (stat.isSymbolicLink())
             throw new DapError('Evidence output path must not be a symbolic link.');
         if (!stat.isFile())
@@ -117,7 +118,26 @@ export function exportEvidenceBundle(options) {
     if (bytes > MAX_EVIDENCE_FILE_BYTES) {
         throw new DapError('Rendered evidence output is ' + bytes + ' bytes; maximum is ' + MAX_EVIDENCE_FILE_BYTES + ' bytes.');
     }
-    writeFileSync(target, content, { encoding: 'utf8', flag: options.overwrite ? 'w' : 'wx' });
+    // Never open the validated destination directly; a symlink swap between
+    // check and write would otherwise redirect the file contents.
+    const temporary = join(dirname(target), '.' + basename(target) + '.' + randomBytes(12).toString('hex') + '.tmp');
+    try {
+        writeFileSync(temporary, content, { encoding: 'utf8', flag: 'wx', mode: 0o600 });
+        if (options.overwrite) {
+            const current = lstatSync(target, { throwIfNoEntry: false });
+            if (current && (!current.isFile() || current.isSymbolicLink()))
+                throw new DapError('Evidence output path changed to a non-regular file during export.');
+            renameSync(temporary, target);
+        }
+        else {
+            // Atomic creation: fails if another process created target.
+            linkSync(temporary, target);
+        }
+    }
+    finally {
+        if (existsSync(temporary))
+            unlinkSync(temporary);
+    }
     return {
         action: 'export',
         path: target,
@@ -129,6 +149,8 @@ export function exportEvidenceBundle(options) {
 export function importEvidenceBundle(pathInput) {
     const path = resolveExistingFile(pathInput, 'Evidence bundle');
     const stat = lstatSync(path);
+    if (!stat.isFile() || stat.isSymbolicLink())
+        throw new DapError('Evidence import requires a regular file, not a symlink.');
     if (stat.size > MAX_EVIDENCE_FILE_BYTES) {
         throw new DapError('Evidence bundle is ' + stat.size + ' bytes; maximum is ' + MAX_EVIDENCE_FILE_BYTES + ' bytes.');
     }

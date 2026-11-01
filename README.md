@@ -1,19 +1,17 @@
 # qwen-dap-mcp
 
+> **Fork of the Apache-2.0 project originally by SLP-DEV1.** This GitHub fork contains maintained JavaScript sources and security fixes. The npm package `@slp-dev1/qwen-dap-mcp` belongs to the upstream project; installing it does **not** install this fork's changes. For this fork use `qwen extensions install spk-c/Qwen-dap-mcp`. See [Fork maintenance notes](README-FORK-CHANGES.md).
+
 **Give coding agents a real native debugger.**
 
 `qwen-dap-mcp` is a local **Debug Adapter Protocol (DAP) → Model Context Protocol (MCP)** bridge for native crash debugging, hang/deadlock triage, crash dumps, differential runtime analysis, remote targets, and bounded fix/verify workflows.
 
 Built for **Qwen Code**, usable from any stdio MCP client, and designed to expose debugger evidence without turning MCP into a general-purpose shell.
 
-[![CI](https://github.com/SLP-DEV1/qwen-dap-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/SLP-DEV1/qwen-dap-mcp/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/SLP-DEV1/qwen-dap-mcp)](https://github.com/SLP-DEV1/qwen-dap-mcp/releases/latest)
-[![npm](https://img.shields.io/npm/v/@slp-dev1/qwen-dap-mcp)](https://www.npmjs.com/package/@slp-dev1/qwen-dap-mcp)
-[![npm downloads](https://img.shields.io/npm/dm/@slp-dev1/qwen-dap-mcp)](https://www.npmjs.com/package/@slp-dev1/qwen-dap-mcp)
-[![MCP Registry](https://img.shields.io/badge/MCP%20Registry-published-5b5bd6)](https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.SLP-DEV1%2Fqwen-dap-mcp)
+[![CI](https://github.com/spk-c/Qwen-dap-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/spk-c/Qwen-dap-mcp/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](package.json)
-[![GitHub stars](https://img.shields.io/github/stars/SLP-DEV1/qwen-dap-mcp?style=social)](https://github.com/SLP-DEV1/qwen-dap-mcp/stargazers)
+[![GitHub stars](https://img.shields.io/github/stars/spk-c/Qwen-dap-mcp?style=social)](https://github.com/spk-c/Qwen-dap-mcp/stargazers)
 
 **[Quick start](#quick-start) · [Capabilities](#what-it-does) · [Debugger support](#debugger-support) · [Safety](#safety-by-design) · [Docs](docs/README.md) · [Contributing](CONTRIBUTING.md)**
 
@@ -36,10 +34,10 @@ Coding agents can read source and propose patches, but native failures often can
 Install directly from GitHub:
 
 ```bash
-qwen extensions install SLP-DEV1/qwen-dap-mcp
+qwen extensions install spk-c/Qwen-dap-mcp
 ```
 
-Or install the published npm package:
+For the separate upstream npm release (not this fork):
 
 ```bash
 qwen extensions install @slp-dev1/qwen-dap-mcp
@@ -56,9 +54,7 @@ You should see the `qwen-dap-mcp` server and the bundled `native-runtime-debug` 
 
 ### Any stdio MCP client
 
-```bash
-npx -y @slp-dev1/qwen-dap-mcp
-```
+For this fork, clone the repository and use `node /absolute/path/to/Qwen-dap-mcp/dist/index.js`. The following npm-based example uses the separate upstream package.
 
 Typical configuration:
 
@@ -246,7 +242,7 @@ Start with the [documentation index](docs/README.md).
 Requirements: **Node.js 20+**.
 
 ```bash
-git clone https://github.com/SLP-DEV1/qwen-dap-mcp.git
+git clone https://github.com/spk-c/Qwen-dap-mcp.git
 cd qwen-dap-mcp
 npm ci
 npm run check
@@ -261,11 +257,11 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 Published as:
 
 - npm: `@slp-dev1/qwen-dap-mcp`
-- MCP Registry: `io.github.SLP-DEV1/qwen-dap-mcp`
-- Qwen Code extension: `qwen extensions install SLP-DEV1/qwen-dap-mcp`
+- MCP Registry: `io.github.spk-c/Qwen-dap-mcp`
+- Qwen Code extension: `qwen extensions install spk-c/Qwen-dap-mcp`
 - GitHub Releases: self-contained extension archives
 
-Current release details are in [CHANGELOG.md](CHANGELOG.md) and [GitHub Releases](https://github.com/SLP-DEV1/qwen-dap-mcp/releases).
+Current release details are in [CHANGELOG.md](CHANGELOG.md) and [GitHub Releases](https://github.com/spk-c/Qwen-dap-mcp/releases).
 
 ## Contributing
 
