@@ -458,7 +458,11 @@ export class DapSession {
                 throw error;
             }
         }
-        const initializedEvent = this.connection.waitForEvent('initialized', debugRequestTimeoutMs, undefined, true);
+        // A previous initialized event belongs to a previous launch. Only accept
+        // the event for this request, and cancel its waiter on early rejection.
+        const initializedAbort = new AbortController();
+        const initializedEvent = this.connection.waitForEvent('initialized', debugRequestTimeoutMs, undefined, false, initializedAbort.signal);
+        void initializedEvent.catch(() => undefined);
         const requestPromise = this.sendStateChangingRequest(request, configuration, debugRequestTimeoutMs);
         const requestFailure = new Promise((_resolve, reject) => {
             void requestPromise.catch(reject);
@@ -485,6 +489,9 @@ export class DapSession {
             this.configured = false;
             this.activeRequest = undefined;
             throw error;
+        }
+        finally {
+            initializedAbort.abort();
         }
     }
     async sendStateChangingRequest(command, args, timeoutMs = this.requestTimeoutMs) {
