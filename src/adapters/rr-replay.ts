@@ -1,18 +1,25 @@
 import { spawn } from 'node:child_process';
+import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 import { DapError } from '../dap/errors.js';
 import { buildRrReplayPlan } from './rr.js';
 const MAX_STDERR_LINES = 100;
-function hasExited(child) {
+export interface ManagedRrReplayOptions {
+    traceDir: string;
+    port: number;
+    rrPath?: string;
+    readyTimeoutMs?: number;
+}
+function hasExited(child: ChildProcessWithoutNullStreams): boolean {
     return child.exitCode !== null || child.signalCode !== null;
 }
 export class ManagedRrReplay {
-    child;
-    stderrLines = [];
-    traceDir;
-    port;
-    rr;
-    startedAt;
+    child?: ChildProcessWithoutNullStreams;
+    stderrLines: string[] = [];
+    traceDir?: string;
+    port?: number;
+    rr?: ReturnType<typeof buildRrReplayPlan>['rr'];
+    startedAt?: string;
     status() {
         const child = this.child;
         return {
@@ -25,7 +32,7 @@ export class ManagedRrReplay {
             ...(this.startedAt ? { startedAt: this.startedAt } : {}),
         };
     }
-    async start(options) {
+    async start(options: ManagedRrReplayOptions) {
         if (this.child && !hasExited(this.child)) {
             throw new DapError('An rr replay process is already running for this debugger session.');
         }
@@ -47,7 +54,7 @@ export class ManagedRrReplay {
             windowsHide: true,
         });
         this.child = child;
-        const capture = (chunk) => {
+        const capture = (chunk: string | Buffer) => {
             const lines = String(chunk).split(/\r?\n/).filter(Boolean);
             this.stderrLines.push(...lines);
             if (this.stderrLines.length > MAX_STDERR_LINES) {
