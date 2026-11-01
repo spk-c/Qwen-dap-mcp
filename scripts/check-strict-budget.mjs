@@ -26,6 +26,25 @@ const breakdown = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
 console.log('Full strict TypeScript diagnostic baseline: ' + errors.length +
   ' (maximum allowed: ' + MAX_STRICT_DIAGNOSTICS + ')');
 console.log('Top diagnostic classes: ' + breakdown.map(([code, n]) => code + '=' + n).join(', '));
+// Keep a bounded, deterministic per-module report to prioritize real fixes.
+// This prints source paths and compiler diagnostics only, never source content.
+const byFile = new Map();
+for (const line of errors) {
+  const match = line.match(/^(.+?)\((\d+),(\d+)\): error (TS\d+): (.+)$/);
+  if (!match) continue;
+  const [, file, , , code, detail] = match;
+  const entry = byFile.get(file) ?? { count: 0, codes: new Map(), samples: [] };
+  entry.count += 1;
+  entry.codes.set(code, (entry.codes.get(code) ?? 0) + 1);
+  if (entry.samples.length < 3) entry.samples.push(code + ': ' + detail.slice(0, 140));
+  byFile.set(file, entry);
+}
+console.log('Most affected modules:');
+for (const [file, entry] of [...byFile.entries()].sort((a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0])).slice(0, 12)) {
+  const codes = [...entry.codes.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+  console.log('  ' + file + ': ' + entry.count + ' (' + codes.map(([code, n]) => code + '=' + n).join(', ') + ')');
+  for (const sample of entry.samples) console.log('    ' + sample);
+}
 if (errors.length > MAX_STRICT_DIAGNOSTICS) {
   console.error('Strict TypeScript diagnostic count regressed. Fix the new errors or explicitly review the baseline.');
   process.exitCode = 1;
