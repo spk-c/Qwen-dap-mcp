@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
+import type { DebugProtocol } from '@vscode/debugprotocol';
 import { resolveExistingDirectory } from '../local-path.js';
 import { logger } from '../logger.js';
 import { DapError, DapRequestError, DapTimeoutError } from './errors.js';
@@ -46,7 +47,10 @@ export class DapConnection extends EventEmitter {
     reverseRequestHistory = [];
     stderrLines = [];
     requestPolicy;
-    constructor(options = {}) {
+    constructor(options: {
+        requestPolicy?: (request: {command: string; args?: unknown}) => {allow: boolean; reason?: string} | Promise<{allow: boolean; reason?: string}>;
+        policyMode?: string;
+    } = {}) {
         super();
         this.requestPolicy = options.requestPolicy
             ?? createDapRequestPolicy(options.policyMode ?? resolveDapPolicyMode());
@@ -139,7 +143,7 @@ export class DapConnection extends EventEmitter {
             this.child = undefined;
             this.emit('adapterExit', { code, signal });
         });
-        await new Promise((resolve, reject) => {
+        await new Promise<void>((resolve, reject) => {
             const onSpawn = () => {
                 cleanup();
                 logger.info('DAP adapter started', {
@@ -224,7 +228,7 @@ export class DapConnection extends EventEmitter {
             command,
             ...(args === undefined ? {} : { arguments: args }),
         };
-        return new Promise((resolve, reject) => {
+        return new Promise<DebugProtocol.Response>((resolve, reject) => {
             let abortHandler;
             const cleanup = () => {
                 clearTimeout(timer);
