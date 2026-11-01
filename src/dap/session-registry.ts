@@ -1,14 +1,18 @@
-// @ts-nocheck
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { DapError } from './errors.js';
 import { GuardedDapSession } from './guarded-session.js';
 export const DEFAULT_DAP_SESSION_ID = 'default';
 export const DEFAULT_MAX_DAP_SESSIONS = 8;
 const SESSION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
-function isPromiseLike(value) {
+export type DapSessionRegistryOptions = {
+    defaultSessionId?: string;
+    maxSessions?: number;
+    sessionFactory?: () => GuardedDapSession;
+};
+function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
     return (value !== null
         && (typeof value === 'object' || typeof value === 'function')
-        && typeof value.then === 'function');
+        && typeof (value as PromiseLike<unknown>).then === 'function');
 }
 /**
  * Owns independent guarded DAP sessions and binds one session ID to the
@@ -19,15 +23,15 @@ function isPromiseLike(value) {
  * Existing callers that omit sessionId continue to use the default session.
  */
 export class DapSessionRegistry {
-    defaultSessionId;
-    maxSessions;
-    sessions = new Map();
-    activeRequestCounts = new Map();
-    closingSessionIds = new Set();
-    sessionContext = new AsyncLocalStorage();
-    sessionFactory;
+    defaultSessionId: string;
+    maxSessions: number;
+    sessions = new Map<string, GuardedDapSession>();
+    activeRequestCounts = new Map<string, number>();
+    closingSessionIds = new Set<string>();
+    sessionContext = new AsyncLocalStorage<string>();
+    sessionFactory: () => GuardedDapSession;
     generatedSessionCounter = 0;
-    constructor(options = {}) {
+    constructor(options: DapSessionRegistryOptions = {}) {
         this.defaultSessionId = options.defaultSessionId ?? DEFAULT_DAP_SESSION_ID;
         this.maxSessions = options.maxSessions ?? DEFAULT_MAX_DAP_SESSIONS;
         this.sessionFactory = options.sessionFactory ?? (() => new GuardedDapSession());
@@ -37,7 +41,7 @@ export class DapSessionRegistry {
         }
         this.sessions.set(this.defaultSessionId, this.sessionFactory());
     }
-    create(requestedSessionId) {
+    create(requestedSessionId?: string) {
         if (this.sessions.size >= this.maxSessions) {
             throw new DapError(`Cannot create another DAP session: the configured limit of ${this.maxSessions} sessions has been reached. Close an unused session first.`);
         }
@@ -50,10 +54,10 @@ export class DapSessionRegistry {
         this.sessions.set(sessionId, session);
         return { sessionId, session };
     }
-    has(sessionId) {
+    has(sessionId: string): boolean {
         return this.sessions.has(sessionId);
     }
-    get(sessionId) {
+    get(sessionId?: string): GuardedDapSession {
         const resolvedId = sessionId ?? this.sessionContext.getStore() ?? this.defaultSessionId;
         const session = this.sessions.get(resolvedId);
         if (!session) {
@@ -62,14 +66,14 @@ export class DapSessionRegistry {
         }
         return session;
     }
-    currentSessionId() {
+    currentSessionId(): string {
         return this.sessionContext.getStore() ?? this.defaultSessionId;
     }
-    activeRequests(sessionId) {
+    activeRequests(sessionId: string): number {
         this.get(sessionId);
         return this.activeRequestCounts.get(sessionId) ?? 0;
     }
-    runWithSession(sessionId, action) {
+    runWithSession<T>(sessionId: string | undefined, action: () => T): T {
         const resolvedId = sessionId ?? this.defaultSessionId;
         this.get(resolvedId);
         if (this.closingSessionIds.has(resolvedId)) {
@@ -87,7 +91,7 @@ export class DapSessionRegistry {
         if (isPromiseLike(result)) {
             return Promise.resolve(result).finally(() => {
                 this.decrementActiveRequests(resolvedId);
-            });
+            }) as T;
         }
         this.decrementActiveRequests(resolvedId);
         return result;
@@ -100,7 +104,7 @@ export class DapSessionRegistry {
             snapshot: session.snapshot(),
         }));
     }
-    async close(sessionId, terminateDebuggee = true) {
+    async close(sessionId: string, terminateDebuggee = true) {
         const session = this.get(sessionId);
         if (this.closingSessionIds.has(sessionId)) {
             throw new DapError(`DAP session '${sessionId}' is already closing.`);
@@ -146,7 +150,7 @@ export class DapSessionRegistry {
      * real GuardedDapSession instance so private fields and lifecycle guards keep
      * their normal semantics.
      */
-    createRoutedSession() {
+    createRoutedSession(): GuardedDapSession {
         const stableTarget = this.get(this.defaultSessionId);
         return new Proxy(stableTarget, {
             get: (_target, property) => {
@@ -160,10 +164,10 @@ export class DapSessionRegistry {
             },
         });
     }
-    incrementActiveRequests(sessionId) {
+    incrementActiveRequests(sessionId: string): void {
         this.activeRequestCounts.set(sessionId, (this.activeRequestCounts.get(sessionId) ?? 0) + 1);
     }
-    decrementActiveRequests(sessionId) {
+    decrementActiveRequests(sessionId: string): void {
         const current = this.activeRequestCounts.get(sessionId) ?? 0;
         if (current <= 1) {
             this.activeRequestCounts.delete(sessionId);
@@ -171,13 +175,13 @@ export class DapSessionRegistry {
         }
         this.activeRequestCounts.set(sessionId, current - 1);
     }
-    nextGeneratedSessionId() {
+    nextGeneratedSessionId(): string {
         do {
             this.generatedSessionCounter += 1;
         } while (this.sessions.has(`session-${this.generatedSessionCounter}`));
         return `session-${this.generatedSessionCounter}`;
     }
-    assertSessionId(sessionId) {
+    assertSessionId(sessionId: string): void {
         if (!SESSION_ID_PATTERN.test(sessionId)) {
             throw new DapError(`Invalid DAP session ID '${sessionId}'. Use 1-64 characters: letters, digits, dot, underscore, or hyphen; the first character must be alphanumeric.`);
         }
