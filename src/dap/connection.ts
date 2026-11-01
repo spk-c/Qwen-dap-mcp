@@ -488,7 +488,7 @@ export class DapConnection extends EventEmitter {
                 pending.resolve(response);
             }
             else {
-                pending.reject(new DapRequestError(pending.command, response.message ?? 'Unknown adapter error', response.body));
+                pending.reject(new DapRequestError(pending.command, typeof response.message === 'string' ? response.message : 'Unknown adapter error', response.body));
             }
             return;
         }
