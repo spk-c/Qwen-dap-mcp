@@ -1,3 +1,5 @@
+import type { McpServer } from '@modelcontextprotocol/server';
+import type { GuardedDapSession } from '../dap/guarded-session.js';
 import * as z from 'zod/v4';
 import { buildLldbDapAttachConfiguration, buildLldbDapLaunchConfiguration, buildLldbDapRemoteAttachConfiguration, discoverLldbDap, resolveLldbDapRemoteEndpoint, } from '../adapters/lldb-dap.js';
 import { REMOTE_DEBUG_HOSTS_ENV } from '../remote-endpoint.js';
@@ -23,7 +25,7 @@ function wrap(handler) {
         }
     };
 }
-export function registerLldbDapTools(server, session) {
+export function registerLldbDapTools(server: McpServer, session: GuardedDapSession) {
     server.registerTool('debug_lldb_dap_info', {
         title: 'Locate lldb-dap',
         description: 'Locate the upstream LLVM lldb-dap adapter from an explicit path, LLDB_DAP_PATH, PATH (including common versioned binary names), or xcrun on macOS. This only discovers a local executable and does not start a debugger or target process.',
