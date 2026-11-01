@@ -1,4 +1,3 @@
-// @ts-nocheck
 import * as z from 'zod/v4';
 import { discoverCodeLldb } from '../adapters/codelldb.js';
 import { buildCodeLldbDumpConfiguration } from '../adapters/codelldb-dump.js';

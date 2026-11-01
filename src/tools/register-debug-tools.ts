@@ -1,4 +1,3 @@
-// @ts-nocheck
 import * as z from 'zod/v4';
 import { buildCodeLldbAttachConfiguration, buildCodeLldbLaunchConfiguration, discoverCodeLldb, } from '../adapters/codelldb.js';
 import { DapError } from '../dap/errors.js';

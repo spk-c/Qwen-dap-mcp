@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { closeSync, constants, existsSync, fstatSync, linkSync, lstatSync, openSync, readSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { basename, dirname, join, resolve } from 'node:path';

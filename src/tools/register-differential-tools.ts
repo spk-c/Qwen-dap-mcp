@@ -1,4 +1,3 @@
-// @ts-nocheck
 import * as z from 'zod/v4';
 import { compareRuntimeSnapshots } from '../diagnostics/runtime-diff.js';
 import { DapError } from '../dap/errors.js';
