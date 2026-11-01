@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { DapError } from '../dap/errors.js';
 import { resolveExistingDirectory, resolveExistingFile } from '../local-path.js';
 import { buildRemoteTcpEndpoint } from '../remote-endpoint.js';
-function isFile(path) {
+function isFile(path: string): boolean {
     try {
         return statSync(path).isFile();
     }
@@ -18,7 +18,7 @@ function executableNames() {
         return ['lldb-dap.exe'];
     return ['lldb-dap', ...LLVM_VERSIONS.map((version) => `lldb-dap-${version}`)];
 }
-function defaultToolchainCandidates(env) {
+function defaultToolchainCandidates(env: NodeJS.ProcessEnv): string[] {
     const candidates = [];
     if (env.LLVM_HOME) {
         candidates.push(join(resolve(env.LLVM_HOME), 'bin', process.platform === 'win32' ? 'lldb-dap.exe' : 'lldb-dap'));
@@ -35,7 +35,7 @@ function defaultToolchainCandidates(env) {
     }
     return [...new Set(candidates)];
 }
-function findOnPath(command) {
+function findOnPath(command: string): string | undefined {
     const locator = process.platform === 'win32' ? 'where.exe' : 'which';
     const result = spawnSync(locator, [command], {
         encoding: 'utf8',
@@ -106,7 +106,11 @@ export function discoverLldbDap(options: LldbDapDiscoveryOptions = {}) {
     }
     throw new Error(`lldb-dap was not found. Install LLDB, set LLDB_DAP_PATH/LLVM_HOME, or pass adapterPath. Searched: ${searched.join(', ')}`);
 }
-export function buildLldbDapLaunchConfiguration(options) {
+export type LldbDapLaunchOptions = { program: string; cwd?: string; args?: string[]; env?: NodeJS.ProcessEnv; stopOnEntry?: boolean };
+export type LldbDapAttachOptions = { pid: number; program?: string; stopOnEntry?: boolean };
+export type LldbDapRemoteOptions = { host: string; port: number; program?: string; policyEnv?: NodeJS.ProcessEnv };
+export type LldbDapCoreOptions = { coreFile: string; program: string; sourceMap?: Record<string, string> };
+export function buildLldbDapLaunchConfiguration(options: LldbDapLaunchOptions) {
     const program = resolveExistingFile(options.program, 'Program executable');
     const cwd = options.cwd
         ? resolveExistingDirectory(options.cwd, 'Working directory')
@@ -122,7 +126,7 @@ export function buildLldbDapLaunchConfiguration(options) {
         stopOnEntry: options.stopOnEntry ?? false,
     };
 }
-export function buildLldbDapAttachConfiguration(options) {
+export function buildLldbDapAttachConfiguration(options: LldbDapAttachOptions) {
     if (!Number.isSafeInteger(options.pid) || options.pid <= 0) {
         throw new DapError(`lldb-dap attach PID must be a positive safe integer; received ${String(options.pid)}`);
     }
@@ -138,7 +142,7 @@ export function buildLldbDapAttachConfiguration(options) {
         stopOnEntry: options.stopOnEntry ?? true,
     };
 }
-export function resolveLldbDapRemoteEndpoint(options) {
+export function resolveLldbDapRemoteEndpoint(options: LldbDapRemoteOptions) {
     return buildRemoteTcpEndpoint(options.host, options.port, options.policyEnv);
 }
 /**
@@ -148,7 +152,7 @@ export function resolveLldbDapRemoteEndpoint(options) {
  * the already validated TCP endpoint so old and new adapters work without
  * exposing user-supplied LLDB command strings.
  */
-export function buildLldbDapRemoteAttachConfiguration(options) {
+export function buildLldbDapRemoteAttachConfiguration(options: LldbDapRemoteOptions) {
     const endpoint = resolveLldbDapRemoteEndpoint(options);
     const program = options.program
         ? resolveExistingFile(options.program, 'Program image')
@@ -161,7 +165,7 @@ export function buildLldbDapRemoteAttachConfiguration(options) {
         attachCommands: [`gdb-remote ${endpoint.target}`],
     };
 }
-export function buildLldbDapCoreConfiguration(options) {
+export function buildLldbDapCoreConfiguration(options: LldbDapCoreOptions) {
     const coreFile = resolveExistingFile(options.coreFile, 'Crash dump');
     const program = resolveExistingFile(options.program, 'Program image');
     return {
