@@ -20,5 +20,6 @@ jobs:
           node-version: ${{ matrix.node }}
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm run check
+      - run: npm run check:pack
       - name: Verify committed build is synchronized
         run: git diff --exit-code -- dist
