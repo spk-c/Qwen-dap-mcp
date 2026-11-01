@@ -54,7 +54,9 @@ export class GuardedDapSession extends DapSession {
                 const guardedOptions = {
                     ...options,
                     ...(options.env ? { env: normalizeEnvironmentOverrides(options.env) } : {}),
-                    ...(executionContext.adapterResolvedCommand
+                    ...('adapterResolvedCommand' in executionContext
+                        && typeof executionContext.adapterResolvedCommand === 'string'
+                        && executionContext.adapterResolvedCommand.length > 0
                         ? { command: executionContext.adapterResolvedCommand }
                         : {}),
                 };
