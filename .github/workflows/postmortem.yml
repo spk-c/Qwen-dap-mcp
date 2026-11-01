@@ -43,6 +43,6 @@ jobs:
           echo "NATIVE_DAP_PATH=$adapter_path" >> "$GITHUB_ENV"
           echo "NATIVE_DAP_BINARY=$PWD/integration/bin/native-debug" >> "$GITHUB_ENV"
           echo "NATIVE_DAP_CORE=$PWD/integration/bin/fixture.core" >> "$GITHUB_ENV"
-      - run: npm install --ignore-scripts --no-audit --no-fund
+      - run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Load core and verify inspection-only enforcement
         run: node --test integration/postmortem.mjs
