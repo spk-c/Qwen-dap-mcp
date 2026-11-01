@@ -70,6 +70,8 @@ export function isInspectOnlyPostmortemAttach(args: unknown): boolean {
     return typeof args.targetCreateCommands[0] === 'string'
         && CODELLDB_DUMP_COMMAND.test(args.targetCreateCommands[0]);
 }
+export type DapPolicyDecision = { allow: boolean; reason?: string };
+export type DapRequestContext = { command: string; args?: unknown };
 /**
  * Build a transport-level DAP request policy.
  *
@@ -81,8 +83,6 @@ export function isInspectOnlyPostmortemAttach(args: unknown): boolean {
  * A narrowly recognized core/minidump attach is permitted so postmortem reads
  * remain usable without granting live-process attach authority.
  */
-export type DapPolicyDecision = { allow: boolean; reason?: string };
-export type DapRequestContext = { command: string; args?: unknown };
 export function createDapRequestPolicy(mode: string = 'standard'): (context: DapRequestContext) => DapPolicyDecision {
     if (mode === 'standard')
         return () => ALLOW;
