@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { createHash } from 'node:crypto';
 function digest(value) {
     return createHash('sha256').update(JSON.stringify(value)).digest('hex');
