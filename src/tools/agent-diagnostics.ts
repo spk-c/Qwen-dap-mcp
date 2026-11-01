@@ -112,7 +112,7 @@ function errorResult(error: unknown) {
 }
 function terminalOutcomeDiagnosis(outcome: {event: string; body?: unknown}) {
     const body = outcome.body;
-    const exitCode = typeof body?.exitCode === 'number' ? body.exitCode : undefined;
+    const exitCode = typeof body === 'object' && body !== null && 'exitCode' in body && typeof body.exitCode === 'number' ? body.exitCode : undefined;
     const abnormalExit = exitCode !== undefined && exitCode !== 0;
     return {
         summary: outcome.event === 'exited'
@@ -152,7 +152,7 @@ function dedupeVariables(variables: DebugProtocol.Variable[]): DebugProtocol.Var
 async function captureFrameEvidence(session: GuardedDapSession, frame: DebugProtocol.StackFrame, index: number, options: RuntimeSnapshotOptions, includeDisassembly: boolean): Promise<FrameEvidence> {
     const maxVariables = options.maxVariablesPerScope ?? 100;
     const collectionErrors = [];
-    let scopes = [];
+    let scopes: DebugProtocol.Scope[] = [];
     try {
         scopes = await session.scopes(frame.id);
     }
@@ -161,7 +161,7 @@ async function captureFrameEvidence(session: GuardedDapSession, frame: DebugProt
     }
     const localScopes = scopes.filter((scope) => /locals?|arguments?|parameters?/i.test(scope.name));
     const registerScope = scopes.find((scope) => /register/i.test(scope.name));
-    const locals = [];
+    const locals: DebugProtocol.Variable[] = [];
     for (const scope of localScopes.slice(0, 3)) {
         if (scope.variablesReference <= 0)
             continue;
@@ -172,7 +172,7 @@ async function captureFrameEvidence(session: GuardedDapSession, frame: DebugProt
             collectionErrors.push(`${scope.name}: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
-    let registers = [];
+    let registers: DebugProtocol.Variable[] = [];
     if (registerScope && registerScope.variablesReference > 0) {
         try {
             registers = await session.variables(registerScope.variablesReference, 0, maxVariables);
@@ -257,7 +257,7 @@ function terminalForVerification(outcome: {event: string; body?: unknown}) {
     const body = outcome.body;
     return {
         event: outcome.event,
-        ...(typeof body?.exitCode === 'number' ? { exitCode: body.exitCode } : {}),
+        ...(typeof body === 'object' && body !== null && 'exitCode' in body && typeof body.exitCode === 'number' ? { exitCode: body.exitCode } : {}),
     };
 }
 function workflowMetadata(stage: 'diagnose'|'verify'|'autonomous', baseline: VerificationBaseline|undefined, diagnosis?: IntelligentCrashDiagnosis, terminal?: {event: 'exited'|'terminated'; exitCode?: number}, agentState?: AutonomousAgentState, maxIterations?: number) {
