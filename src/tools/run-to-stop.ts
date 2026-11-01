@@ -19,7 +19,7 @@ function createOutcomeWait(session, timeoutMs) {
         session.connection.off('adapterExit', onAdapterExit);
         session.connection.off('adapterError', onAdapterError);
     };
-    const promise = new Promise((resolve, reject) => {
+    const promise = new Promise<{event: string; body?: {threadId?: number}} | undefined>((resolve, reject) => {
         resolvePromise = resolve;
         handler = (event) => {
             if (!OUTCOME_EVENTS.has(event.event))
