@@ -1,4 +1,4 @@
-function isWindowsStylePath(value) {
+function isWindowsStylePath(value: string): boolean {
     return /^[a-z]:[\\/]/i.test(value)
         || /^\\\\/.test(value)
         || (!value.startsWith('/') && value.includes('\\'));
@@ -10,7 +10,7 @@ function isWindowsStylePath(value) {
  * comparison. POSIX paths preserve case because `/Project/a.cpp` and
  * `/project/a.cpp` can be different files on the same machine.
  */
-export function normalizeDiagnosticPath(value) {
+export function normalizeDiagnosticPath(value: string | undefined | null): string | undefined {
     if (!value)
         return undefined;
     if (isWindowsStylePath(value)) {
@@ -27,7 +27,7 @@ export function normalizeDiagnosticPath(value) {
         return '/';
     return value.replace(/\/+$/, '');
 }
-export function diagnosticPathWithinRoot(candidate, root) {
+export function diagnosticPathWithinRoot(candidate: string, root: string): boolean {
     if (candidate === root)
         return true;
     const prefix = root.endsWith('/') ? root : `${root}/`;
