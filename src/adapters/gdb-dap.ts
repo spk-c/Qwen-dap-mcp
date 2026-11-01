@@ -142,9 +142,9 @@ export function resolveGdbDapRemoteEndpoint(options: GdbDapRemoteOptions) {
     if (hasTarget && (hasHost || hasPort)) {
         throw new DapError('Specify either target or host+port for GDB remote attach, not both forms.');
     }
-    if (hasTarget)
+    if (hasTarget && typeof options.target === 'string')
         return parseRemoteTcpTarget(options.target, options.policyEnv);
-    if (!hasHost || !hasPort) {
+    if (!hasHost || !hasPort || typeof options.host !== 'string' || options.port === undefined) {
         throw new DapError('GDB remote attach requires host and port (or the backward-compatible TCP target form).');
     }
     return buildRemoteTcpEndpoint(options.host, options.port, options.policyEnv);
