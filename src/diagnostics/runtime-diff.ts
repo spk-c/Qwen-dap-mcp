@@ -1,6 +1,7 @@
+import type { DebugProtocol } from '@vscode/debugprotocol';
 const ADDRESS_RE = /^(?:0x)?[0-9a-f]{6,}$/i;
 const NULL_RE = /^(?:0x)?0+$/i;
-function normalizeSourcePath(value) {
+function normalizeSourcePath(value: string | null | undefined): string | undefined {
     if (!value)
         return undefined;
     const normalized = value.replace(/\\/g, '/');
@@ -8,25 +9,25 @@ function normalizeSourcePath(value) {
         ? `${normalized[0]?.toLowerCase()}${normalized.slice(1)}`.toLowerCase()
         : normalized;
 }
-function canonicalJson(value) {
-    const visit = (input) => {
+function canonicalJson(value: unknown): string {
+    const visit = (input: unknown): unknown => {
         if (Array.isArray(input))
             return input.map(visit);
         if (!input || typeof input !== 'object')
             return input;
-        const record = input;
+        const record = input as Record<string, unknown>;
         return Object.fromEntries(Object.keys(record).sort().map((key) => [key, visit(record[key])]));
     };
     return JSON.stringify(visit(value));
 }
-function isNullLike(value) {
+function isNullLike(value: string): boolean {
     const normalized = value.trim().toLowerCase();
     return normalized === 'null' || normalized === 'nullptr' || normalized === '(nil)' || normalized === 'nil' || NULL_RE.test(normalized);
 }
-function isAddressLike(value) {
+function isAddressLike(value: string): boolean {
     return ADDRESS_RE.test(value.trim());
 }
-function frameIdentity(frame) {
+function frameIdentity(frame: DebugProtocol.StackFrame | undefined) {
     if (!frame)
         return undefined;
     const sourcePath = normalizeSourcePath(frame.source?.path);
@@ -37,7 +38,7 @@ function frameIdentity(frame) {
         ...(frame.moduleId === undefined ? {} : { moduleId: String(frame.moduleId) }),
     };
 }
-function sameFrame(left, right) {
+function sameFrame(left: ReturnType<typeof frameIdentity>, right: ReturnType<typeof frameIdentity>): boolean {
     if (!left || !right)
         return left === right;
     return left.function === right.function
@@ -45,11 +46,11 @@ function sameFrame(left, right) {
         && left.line === right.line
         && left.moduleId === right.moduleId;
 }
-function variableKey(variable) {
+function variableKey(variable: DebugProtocol.Variable): string {
     return [variable.evaluateName || variable.name, variable.type ?? ''].join('\u0000');
 }
-function firstVariablesByKey(variables) {
-    const output = new Map();
+function firstVariablesByKey(variables: DebugProtocol.Variable[]): Map<string, DebugProtocol.Variable> {
+    const output = new Map<string, DebugProtocol.Variable>();
     for (const variable of variables) {
         const key = variableKey(variable);
         if (!output.has(key))
@@ -57,7 +58,7 @@ function firstVariablesByKey(variables) {
     }
     return output;
 }
-function diffVariable(key, baseline, candidate) {
+function diffVariable(key: string, baseline?: DebugProtocol.Variable, candidate?: DebugProtocol.Variable) {
     const name = baseline?.name ?? candidate?.name ?? key;
     const type = baseline?.type ?? candidate?.type;
     if (!baseline) {
@@ -102,13 +103,13 @@ function diffVariable(key, baseline, candidate) {
         ...(type ? { type } : {}),
     };
 }
-function diffVariables(baseline, candidate) {
+function diffVariables(baseline: DebugProtocol.Variable[], candidate: DebugProtocol.Variable[]) {
     const left = firstVariablesByKey(baseline);
     const right = firstVariablesByKey(candidate);
     const keys = [...new Set([...left.keys(), ...right.keys()])].sort();
     return keys.map((key) => diffVariable(key, left.get(key), right.get(key)));
 }
-function moduleKey(module) {
+function moduleKey(module: DebugProtocol.Module): string {
     const path = normalizeSourcePath(module.path);
     return path || module.name || String(module.id);
 }
