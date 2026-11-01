@@ -17,7 +17,7 @@ import { routeSessionToolRegistrar } from './tools/session-routing.js';
 import { registerValueTracingTool } from './tools/value-tracing.js';
 import { annotateToolRegistrar, filterToolRegistrar, resolveToolsetMode } from './toolset.js';
 import { packageVersion } from './version.js';
-export function adapterDoctorGuidance(mode) {
+export function adapterDoctorGuidance(mode: string): string {
     if (mode === 'agent') {
         return 'In the compact agent toolset, use debug_status for active-session information. For detailed adapter capabilities, set QWEN_DAP_MCP_TOOLSET=forensics before calling debug_adapter_doctor.';
     }
