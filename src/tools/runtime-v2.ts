@@ -20,6 +20,7 @@ import { debugAdapterDoctorOutputSchema, debugAdaptiveEvidenceOutputSchema, debu
 import { openDump } from './register-dump-tools.js';
 import { findObservedValue, traceValue } from './value-tracing.js';
 import { DEBUG_SESSION_CONTROL_ANNOTATIONS, LOCAL_TARGET_EXECUTION_ANNOTATIONS, READ_ONLY_LOCAL_TOOL_ANNOTATIONS, } from './tool-annotations.js';
+type DapEventRecord = { event: string; body?: { output?: unknown } };
 const RR_REPLAY_BY_CONNECTION = new WeakMap<GuardedDapSession['connection'], ManagedRrReplay>();
 function replayManagerFor(session: GuardedDapSession): ManagedRrReplay {
     const key = session.connection;
@@ -42,7 +43,8 @@ function errorResult(error: unknown) {
 }
 function debuggerOutput(session: GuardedDapSession): string[] {
     const status = session.snapshot();
-    const dap = status.recentEvents
+    const dapEvents: DapEventRecord[] = status.recentEvents;
+    const dap = dapEvents
         .filter((record) => record.event === 'output')
         .map((record) => {
         const body = record.body;
@@ -137,7 +139,7 @@ async function captureTimeline(session: GuardedDapSession, options: TimelineCapt
             const eventCountBeforeResume = session.snapshot().recentEvents.length;
             await session.continueExecution(resumeThread.id, false, Math.max(5000, options.intervalMs * 4));
             await new Promise((resolve) => setTimeout(resolve, options.intervalMs));
-            const eventsAfterResume = session.snapshot().recentEvents.slice(eventCountBeforeResume);
+            const eventsAfterResume: DapEventRecord[] = session.snapshot().recentEvents.slice(eventCountBeforeResume);
             const terminal = [...eventsAfterResume].reverse().find((record) => {
                 const event = record.event;
                 return event === 'exited' || event === 'terminated';
@@ -154,7 +156,7 @@ async function captureTimeline(session: GuardedDapSession, options: TimelineCapt
                 await session.pause(resumeThread.id, true, Math.max(5000, options.intervalMs * 4));
             }
             catch (error) {
-                const recent = session.snapshot().recentEvents.slice(eventCountBeforeResume);
+                const recent: DapEventRecord[] = session.snapshot().recentEvents.slice(eventCountBeforeResume);
                 const lateTerminal = [...recent].reverse().find((record) => {
                     const event = record.event;
                     return event === 'exited' || event === 'terminated';
