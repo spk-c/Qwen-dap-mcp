@@ -25,7 +25,8 @@
     "check": "npm run build && npm test && npm run check:docs && npm run check:package",
     "prepublishOnly": "npm run check",
     "start": "node dist/index.js",
-    "check:docs": "node scripts/check-docs.mjs"
+    "check:docs": "node scripts/check-docs.mjs",
+    "check:pack": "node scripts/check-package-tarball.mjs"
   },
   "engines": {
     "node": ">=20"
