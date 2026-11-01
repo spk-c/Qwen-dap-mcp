@@ -263,22 +263,22 @@ export class DapSession {
         const event = await stopped.promise;
         return { response: response.body ?? {}, stopped: event.body ?? {} };
     }
-    async threads() {
+    async threads(): Promise<DebugProtocol.Thread[]> {
         this.assertConfigured();
         const response = await this.connection.sendRequest('threads', {}, this.requestTimeoutMs);
         return (response.body?.threads ?? []);
     }
-    async stackTrace(threadId: number, startFrame = 0, levels = 20) {
+    async stackTrace(threadId: number, startFrame = 0, levels = 20): Promise<DebugProtocol.StackFrame[]> {
         this.assertConfigured();
         const response = await this.connection.sendRequest('stackTrace', { threadId, startFrame, levels }, this.requestTimeoutMs);
         return (response.body?.stackFrames ?? []);
     }
-    async scopes(frameId: number) {
+    async scopes(frameId: number): Promise<DebugProtocol.Scope[]> {
         this.assertConfigured();
         const response = await this.connection.sendRequest('scopes', { frameId }, this.requestTimeoutMs);
         return (response.body?.scopes ?? []);
     }
-    async variables(variablesReference: number, start?: number, count?: number) {
+    async variables(variablesReference: number, start?: number, count?: number): Promise<DebugProtocol.Variable[]> {
         this.assertConfigured();
         if (!Number.isSafeInteger(variablesReference) || variablesReference <= 0) {
             throw new DapError(`variablesReference must be a positive safe integer; received ${String(variablesReference)}`);
@@ -315,7 +315,7 @@ export class DapSession {
         const response = await this.sendStateChangingRequest('evaluate', args);
         return (response.body ?? { result: '', variablesReference: 0 });
     }
-    async modules(startModule = 0, moduleCount = 100) {
+    async modules(startModule = 0, moduleCount = 100): Promise<DebugProtocol.Module[]> {
         this.assertConfigured();
         this.assertCapability('supportsModulesRequest', 'modules');
         const response = await this.connection.sendRequest('modules', { startModule, moduleCount }, this.requestTimeoutMs);
@@ -377,7 +377,7 @@ export class DapSession {
             }
         }
         const locals = dedupeVariables(localVariables).slice(0, maxVariables * Math.max(1, localScopes.length));
-        let registers = [];
+        let registers: DebugProtocol.Variable[] = [];
         if (registersScope && registersScope.variablesReference > 0) {
             try {
                 registers = dedupeVariables(await this.variables(registersScope.variablesReference, 0, maxVariables)).slice(0, maxVariables);
@@ -563,33 +563,35 @@ export class DapSession {
     }
     createThreadStopWait(threadId: number, timeoutMs: number) {
         let active = true;
-        let timer;
-        let rejectPromise;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        let rejectPromise!: (reason: unknown) => void;
         const cleanup = () => {
             clearTimeout(timer);
             this.connection.off('event:stopped', onStopped);
             this.connection.off('adapterExit', onAdapterExit);
             this.connection.off('adapterError', onAdapterError);
         };
-        const finish = (event: any, error?: Error) => {
+        const finish = (event: DebugProtocol.Event | undefined, error?: Error) => {
             if (!active)
                 return;
             active = false;
             cleanup();
             if (error)
                 rejectPromise(error);
-            else
+            else if (event)
                 resolvePromise(event);
+            else
+                rejectPromise(new DapError('Stopped event wait finished without an event.'));
         };
-        let resolvePromise;
-        const onStopped = (event) => {
+        let resolvePromise!: (event: DebugProtocol.Event) => void;
+        const onStopped = (event: DebugProtocol.Event) => {
             const body = event.body;
             if (body?.allThreadsStopped !== true && body?.threadId !== undefined && body.threadId !== threadId)
                 return;
             finish(event);
         };
         const onAdapterExit = () => finish(undefined, new DapError("DAP adapter exited while waiting for event 'stopped'"));
-        const onAdapterError = (error) => finish(undefined, error instanceof Error ? error : new DapError("DAP adapter failed while waiting for event 'stopped'"));
+        const onAdapterError = (error: unknown) => finish(undefined, error instanceof Error ? error : new DapError("DAP adapter failed while waiting for event 'stopped'"));
         const promise = new Promise<DebugProtocol.Event>((resolve, reject) => {
             resolvePromise = resolve;
             rejectPromise = reject;
