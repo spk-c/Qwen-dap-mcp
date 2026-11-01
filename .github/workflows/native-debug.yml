@@ -55,10 +55,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Download CodeLLDB from official VS Marketplace
+      - name: Download CodeLLDB from official GitHub release
         shell: pwsh
         run: |
-          $uri = 'https://marketplace.visualstudio.com/_apis/public/gallery/publishers/vadimcn/vsextensions/vscode-lldb/1.12.3/vspackage?targetPlatform=win32-x64'
+          $uri = 'https://github.com/vadimcn/codelldb/releases/download/v1.12.3/codelldb-win32-x64.vsix'
           Invoke-WebRequest -Uri $uri -OutFile codelldb.zip -MaximumRedirection 10
           Expand-Archive codelldb.zip -DestinationPath codelldb-install -Force
           $adapter = (Resolve-Path 'codelldb-install/extension/adapter/codelldb.exe').Path
