@@ -17,7 +17,7 @@ const INSPECT_ONLY_ALLOWED_COMMANDS = new Set([
     'breakpointLocations',
 ]);
 const ALLOW = { allow: true };
-function isRecord(value) {
+function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 /**
@@ -27,13 +27,13 @@ function isRecord(value) {
 const CORE_ATTACH_KEYS = new Set(['coreFile', 'program', 'type', 'request', 'name', 'sourceMap']);
 const CODELLDB_DUMP_KEYS = new Set(['type', 'request', 'name', 'targetCreateCommands', 'processCreateCommands', 'sourceMap']);
 const CODELLDB_DUMP_COMMAND = /^target create -c "(?:[^"\\\r\n]|\\["\\])*"(?: "(?:[^"\\\r\n]|\\["\\])*")?$/;
-function hasOnlyKeys(value, keys) {
+function hasOnlyKeys(value: Record<string, unknown>, keys: ReadonlySet<string>): boolean {
     return Object.keys(value).every((key) => keys.has(key));
 }
-function safePath(value) {
+function safePath(value: unknown): value is string {
     return typeof value === 'string' && value.trim().length > 0 && !/[\0\r\n]/.test(value);
 }
-function safeSourceMap(value) {
+function safeSourceMap(value: unknown): boolean {
     if (value === undefined)
         return true;
     if (Array.isArray(value))
@@ -45,7 +45,7 @@ function safeSourceMap(value) {
  * Unknown keys are rejected to prevent live attach or arbitrary debugger
  * commands being smuggled alongside a legitimate-looking coreFile.
  */
-export function isInspectOnlyPostmortemAttach(args) {
+export function isInspectOnlyPostmortemAttach(args: unknown): boolean {
     if (!isRecord(args))
         return false;
     if (Object.hasOwn(args, 'coreFile')) {
@@ -81,7 +81,9 @@ export function isInspectOnlyPostmortemAttach(args) {
  * A narrowly recognized core/minidump attach is permitted so postmortem reads
  * remain usable without granting live-process attach authority.
  */
-export function createDapRequestPolicy(mode = 'standard') {
+export type DapRequestContext = { command: string; args?: unknown };
+export type DapPolicyDecision = { allow: true } | { allow: false; reason: string };
+export function createDapRequestPolicy(mode: string = 'standard'): (context: DapRequestContext) => DapPolicyDecision {
     if (mode === 'standard')
         return () => ALLOW;
     return ({ command, args }) => {
@@ -96,7 +98,7 @@ export function createDapRequestPolicy(mode = 'standard') {
     };
 }
 /** Resolve the built-in policy from QWEN_DAP_MCP_DAP_POLICY. */
-export function resolveDapPolicyMode(value = process.env.QWEN_DAP_MCP_DAP_POLICY) {
+export function resolveDapPolicyMode(value: string | undefined = process.env.QWEN_DAP_MCP_DAP_POLICY): string {
     const normalized = value?.trim().toLowerCase();
     if (!normalized)
         return securityProfileDefaults(resolveSecurityProfile()).dapPolicy;
