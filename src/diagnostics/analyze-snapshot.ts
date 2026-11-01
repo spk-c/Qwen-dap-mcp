@@ -211,8 +211,8 @@ function looksPointerLike(variable: DebugProtocol.Variable): boolean {
     return /\*|pointer|ptr\b|address|handle|\bthis\b|\bself\b|object|reference/i.test(`${variable.name} ${variable.type ?? ''}`);
 }
 function suspiciousValues(snapshot: RuntimeSnapshot): SuspiciousValue[] {
-    const output = [];
-    const scan = (scope, variables) => {
+    const output: SuspiciousValue[] = [];
+    const scan = (scope: SuspiciousValue['scope'], variables: readonly DebugProtocol.Variable[]): void => {
         for (const variable of variables) {
             const normalized = variable.value.trim().toLowerCase();
             const compact = normalized.replace(/[`'_\s]/g, '');
@@ -250,7 +250,7 @@ function locationText(snapshot: RuntimeSnapshot): string {
     return path ? `${snapshot.frame.name} at ${path}:${snapshot.frame.line}` : snapshot.frame.name;
 }
 function buildHypotheses(snapshot: RuntimeSnapshot, classification: CrashDiagnosis['classification'], suspicious: SuspiciousValue[]): DiagnosisHypothesis[] {
-    const hypotheses = [];
+    const hypotheses: DiagnosisHypothesis[] = [];
     const nullValues = suspicious.filter((item) => item.reason === 'null-like-pointer');
     const nullLocals = nullValues.filter((item) => item.scope === 'local');
     const nullRegisters = nullValues.filter((item) => item.scope === 'register');
