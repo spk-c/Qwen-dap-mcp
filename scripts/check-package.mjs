@@ -20,6 +20,7 @@ function verify(from, relative = '') {
     else if (entry.isFile() && entry.name.endsWith('.js')) {
       assert.equal(readFileSync(p, 'utf8'), readFileSync(join(root, 'dist', name), 'utf8'), 'Source/distribution drift: ' + name);
       assert.ok(existsSync(join(root, 'dist', name.slice(0,-3)+'.d.ts')), 'Missing generated declaration: ' + name);
+      assert.ok(existsSync(join(root, 'src', name.slice(0, -3) + '.ts')), 'Missing TypeScript source for ' + name);
       checked++;
     }
   }

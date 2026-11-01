@@ -1,17 +1,17 @@
 # Qwen DAP MCP documentation
 
-This fork includes editable JavaScript sources in src/ and runtime files in dist/. The original TypeScript sources, their tests, and their build configuration were not included in the imported repository snapshot. Exact TypeScript reconstruction is not possible from the available source maps.
+This fork now uses **src/**/*.ts as the authoritative runtime sources** (51 modules). The generated src/**/*.js mirrors preserve existing Node ESM imports, while dist/ contains the compiled runtime and generated declarations. The recovered v0.12.0 source snapshot provides original TypeScript references for 21 modules; the later v0.18.2 npm release did not contain its original .ts files. See [migration status](typescript-migration.md) for temporary typing exclusions.
 
 ## Development
 
 Requires Node.js 20 or later.
 
-    npm install
+    npm ci
     npm run build
     npm test
     npm run check
 
-The build copies src/**/*.js into dist/**/*.js. Existing declaration files originate from the imported compiled package. To test the stdio entrypoint without a debugger:
+The build compiles src/**/*.ts with tsc to dist/**/*.js and dist/**/*.d.ts, then mirrors the JavaScript into src/ for compatibility. To test the stdio entrypoint without a debugger:
 
     node dist/index.js --help
 

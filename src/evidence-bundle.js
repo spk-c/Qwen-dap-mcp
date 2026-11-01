@@ -158,7 +158,6 @@ export function importEvidenceBundle(pathInput) {
         throw new DapError('Evidence import requires a regular file, not a symlink.');
     if (initial.size > MAX_EVIDENCE_FILE_BYTES)
         throw new DapError('Evidence bundle exceeds the 8 MiB safety limit.');
-
     // Open the file once, without following a final symlink on platforms that
     // support O_NOFOLLOW. fstat confirms we did not race the initial path check.
     const fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));

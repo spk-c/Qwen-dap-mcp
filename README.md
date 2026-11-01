@@ -1,6 +1,6 @@
 # qwen-dap-mcp
 
-> **Fork of the Apache-2.0 project originally by SLP-DEV1.** This GitHub fork contains maintained JavaScript sources and security fixes. The npm package `@slp-dev1/qwen-dap-mcp` belongs to the upstream project; installing it does **not** install this fork's changes. For this fork use `qwen extensions install spk-c/Qwen-dap-mcp`. See [Fork maintenance notes](README-FORK-CHANGES.md).
+> **Fork of the Apache-2.0 project originally by SLP-DEV1.** This GitHub fork compiles 51 maintained TypeScript runtime modules and retains generated JavaScript compatibility mirrors, plus debugger security fixes. The npm package `@slp-dev1/qwen-dap-mcp` belongs to the upstream project; installing it does **not** install this fork's changes. For this fork use `qwen extensions install spk-c/Qwen-dap-mcp`. See [Fork maintenance notes](README-FORK-CHANGES.md) and [TypeScript migration status](docs/typescript-migration.md).
 
 **Give coding agents a real native debugger.**
 
