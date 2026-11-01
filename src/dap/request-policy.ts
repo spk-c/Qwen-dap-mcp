@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { DapError } from './errors.js';
 import { resolveSecurityProfile, securityProfileDefaults } from '../security-profile.js';
 const INSPECT_ONLY_ALLOWED_COMMANDS = new Set([

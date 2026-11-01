@@ -1,7 +1,7 @@
-// @ts-nocheck
 import { DapError } from '../dap/errors.js';
 import { resolveExistingFile } from '../local-path.js';
-function assertSafeLldbCommandPath(path) {
+export type CodeLldbDumpOptions = { dumpPath: string; program?: string; sourceMap?: Record<string, string> };
+function assertSafeLldbCommandPath(path: string) {
     // These paths become part of one LLDB command string. Reject command-line
     // control characters before even touching the filesystem so malformed input
     // fails deterministically on every supported OS.
@@ -9,13 +9,13 @@ function assertSafeLldbCommandPath(path) {
         throw new DapError('LLDB target paths must not contain NUL, carriage-return, or newline characters');
     }
 }
-function quoteLldbPath(path) {
+function quoteLldbPath(path: string) {
     assertSafeLldbCommandPath(path);
     // Forward slashes work on Windows in LLDB and avoid backslash escaping in
     // the command interpreter. Quotes are escaped explicitly for unusual paths.
     return `"${path.replace(/\\/g, '/').replace(/"/g, '\\"')}"`;
 }
-export function buildCodeLldbDumpConfiguration(options) {
+export function buildCodeLldbDumpConfiguration(options: CodeLldbDumpOptions) {
     assertSafeLldbCommandPath(options.dumpPath);
     if (options.program)
         assertSafeLldbCommandPath(options.program);

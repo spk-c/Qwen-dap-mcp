@@ -1,6 +1,6 @@
-// @ts-nocheck
 import { DapError } from './dap/errors.js';
-const PROFILES = {
+export type SecurityProfile = 'inspect' | 'local-debug' | 'advanced';
+const PROFILES: Record<SecurityProfile, { toolset: string; dapPolicy: string; description: string }> = {
     inspect: {
         toolset: 'agent',
         dapPolicy: 'inspect-only',
@@ -17,7 +17,7 @@ const PROFILES = {
         description: 'High-level forensic workflows without exposing the raw manual DAP surface. Set QWEN_DAP_MCP_TOOLSET=full explicitly for low-level commands.',
     },
 };
-export function resolveSecurityProfile(value = process.env.QWEN_DAP_MCP_PROFILE) {
+export function resolveSecurityProfile(value: string | undefined = process.env.QWEN_DAP_MCP_PROFILE): SecurityProfile {
     const normalized = value?.trim().toLowerCase();
     if (!normalized)
         return 'local-debug';
@@ -29,7 +29,7 @@ export function resolveSecurityProfile(value = process.env.QWEN_DAP_MCP_PROFILE)
         return 'advanced';
     throw new DapError(`Unsupported QWEN_DAP_MCP_PROFILE '${value}'. Expected 'inspect', 'local-debug', or 'advanced'.`);
 }
-export function securityProfileDefaults(profile = resolveSecurityProfile()) {
+export function securityProfileDefaults(profile: SecurityProfile = resolveSecurityProfile()) {
     return PROFILES[profile];
 }
 export function securityProfileSnapshot(env = process.env) {

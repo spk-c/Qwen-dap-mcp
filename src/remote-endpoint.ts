@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { isIP } from 'node:net';
 import { DapError } from './dap/errors.js';
 export const REMOTE_DEBUG_HOSTS_ENV = 'QWEN_DAP_MCP_REMOTE_DEBUG_HOSTS';

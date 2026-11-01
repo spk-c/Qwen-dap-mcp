@@ -1,14 +1,13 @@
-// @ts-nocheck
 export class DapError extends Error {
-    constructor(message, options) {
+    constructor(message: string, options?: ErrorOptions) {
         super(message, options);
         this.name = 'DapError';
     }
 }
 export class DapRequestError extends DapError {
-    command;
-    responseBody;
-    constructor(command, message, responseBody) {
+    command: string;
+    responseBody?: unknown;
+    constructor(command: string, message: string, responseBody?: unknown) {
         super(`DAP request '${command}' failed: ${message}`);
         this.name = 'DapRequestError';
         this.command = command;
@@ -16,7 +15,7 @@ export class DapRequestError extends DapError {
     }
 }
 export class DapTimeoutError extends DapError {
-    constructor(operation, timeoutMs) {
+    constructor(operation: string, timeoutMs: number) {
         super(`Timed out waiting for ${operation} after ${timeoutMs} ms`);
         this.name = 'DapTimeoutError';
     }

@@ -1,15 +1,14 @@
-// @ts-nocheck
 import { statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { DapError } from './dap/errors.js';
 import { logger } from './logger.js';
-function resolveInputPath(input, label) {
+function resolveInputPath(input: string, label: string) {
     if (!input.trim()) {
         throw new DapError(`${label} must not be empty`);
     }
     return resolve(input);
 }
-function readStat(path, label) {
+function readStat(path: string, label: string) {
     try {
         return statSync(path);
     }
@@ -20,7 +19,7 @@ function readStat(path, label) {
         });
     }
 }
-export function resolveExistingFile(input, label) {
+export function resolveExistingFile(input: string, label: string): string {
     const resolved = resolveInputPath(input, label);
     const stat = readStat(resolved, label);
     if (!stat.isFile()) {
@@ -30,7 +29,7 @@ export function resolveExistingFile(input, label) {
     logger.debug('Validated local file path', { label, path: resolved });
     return resolved;
 }
-export function resolveExistingDirectory(input, label) {
+export function resolveExistingDirectory(input: string, label: string): string {
     const resolved = resolveInputPath(input, label);
     const stat = readStat(resolved, label);
     if (!stat.isDirectory()) {
