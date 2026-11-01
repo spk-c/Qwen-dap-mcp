@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { assessProjectFrames, } from './intelligent-diagnosis.js';
 const WAIT_RULES = [
     {
