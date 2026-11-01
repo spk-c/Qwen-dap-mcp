@@ -1,0 +1,32 @@
+name: Loopback GDB remote E2E
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  loopback-gdbserver:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install native debugger and gdbserver
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends gdb gdbserver g++
+      - name: Build exclusively owned debug target
+        run: |
+          mkdir -p integration/bin
+          g++ -std=c++17 -O0 -g -fno-omit-frame-pointer integration/fixture/native-debug.cpp -o integration/bin/native-debug
+      - name: Configure local debug fixtures
+        shell: bash
+        run: |
+          echo "RUN_REMOTE_DEBUGGER_TESTS=1" >> "$GITHUB_ENV"
+          echo "NATIVE_DAP_PATH=$(command -v gdb)" >> "$GITHUB_ENV"
+          echo "GDBSERVER_PATH=$(command -v gdbserver)" >> "$GITHUB_ENV"
+          echo "NATIVE_DAP_BINARY=$PWD/integration/bin/native-debug" >> "$GITHUB_ENV"
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Verify loopback, breakpoint and cleanup with real gdbserver
+        run: node --test integration/remote-gdb.mjs
