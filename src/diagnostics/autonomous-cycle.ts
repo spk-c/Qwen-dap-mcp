@@ -186,7 +186,7 @@ export function buildRootCauseBacktrack(diagnosis: IntelligentCrashDiagnosis): R
     const matchingTrail = targetValue
         ? diagnosis.callChain.provenance.find((item) => normalizedValue(item.value) === targetValue)
         : undefined;
-    const runtimeTrail = [];
+    const runtimeTrail: RootCauseBacktrack['runtimeTrail'] = [];
     if (matchingTrail) {
         const frames = [...matchingTrail.frames].sort((a, b) => a.index - b.index);
         frames.forEach((frame, index) => {
@@ -247,9 +247,9 @@ export function buildRootCauseBacktrack(diagnosis: IntelligentCrashDiagnosis): R
 }
 export function verificationQuality(verification: VerificationResult): VerificationQuality {
     let score = 25;
-    let reproduction = 'incomplete';
-    let rootCrash = 'unknown';
-    let newCrash = 'unknown';
+    let reproduction: VerificationQuality['checks']['reproduction'] = 'incomplete';
+    let rootCrash: VerificationQuality['checks']['rootCrash'] = 'unknown';
+    let newCrash: VerificationQuality['checks']['newCrash'] = 'unknown';
     switch (verification.verdict) {
         case 'fixed':
             score = verification.confidence === 'high' ? 75 : 60;
@@ -376,7 +376,7 @@ export function startAutonomousCycle(diagnosis: IntelligentCrashDiagnosis, maxIt
     const baseline = diagnosis.verificationBaseline;
     const fingerprint = baselineFingerprint(baseline);
     const ready = evidenceReady(diagnosis);
-    const state = {
+    const state: AutonomousAgentState = {
         schemaVersion: 1,
         iteration: 1,
         maxIterations: boundedMaxIterations(maxIterations),
@@ -410,7 +410,7 @@ export function refreshAutonomousEvidence(previous: AutonomousAgentState, diagno
         diagnosisHistory(diagnosis, activeFingerprint, previous.iteration),
     ].slice(-24);
     const ready = evidenceReady(diagnosis);
-    const state = {
+    const state: AutonomousAgentState = {
         ...previous,
         status: ready ? 'needs-fix' : 'needs-evidence',
         activeBaseline,
@@ -450,7 +450,7 @@ export function advanceAutonomousCycle(previous: AutonomousAgentState, verificat
     const quality = verificationQuality(verification);
     const backtrack = currentDiagnosis ? buildRootCauseBacktrack(currentDiagnosis) : undefined;
     if (verification.verdict === 'fixed') {
-        const state = { ...previous, status: 'fixed', history };
+        const state: AutonomousAgentState = { ...previous, status: 'fixed', history };
         return {
             protocolVersion: 2,
             state,
@@ -462,7 +462,7 @@ export function advanceAutonomousCycle(previous: AutonomousAgentState, verificat
         };
     }
     if (verification.verdict === 'inconclusive') {
-        const state = { ...previous, status: 'needs-reproduction', history };
+        const state: AutonomousAgentState = { ...previous, status: 'needs-reproduction', history };
         const reproduce = action(state.iteration, 'reproduce', 'debugger', 'Do not edit again. Continue or repeat the complete original reproduction until it reaches a crash diagnosis or clean terminal outcome.', {
             input: { activeFingerprint: state.activeFingerprint },
             expected: 'A complete crash or clean-exit reproduction.',
@@ -486,7 +486,7 @@ export function advanceAutonomousCycle(previous: AutonomousAgentState, verificat
         };
     }
     if (previous.iteration >= previous.maxIterations) {
-        const state = { ...previous, status: 'budget-exhausted', history };
+        const state: AutonomousAgentState = { ...previous, status: 'budget-exhausted', history };
         return {
             protocolVersion: 2,
             state,
@@ -499,7 +499,7 @@ export function advanceAutonomousCycle(previous: AutonomousAgentState, verificat
     }
     if (verification.verdict === 'changed-failure') {
         if (!currentDiagnosis || !currentDiagnosis.classification.crashLikely) {
-            const state = { ...previous, status: 'blocked', history };
+            const state: AutonomousAgentState = { ...previous, status: 'blocked', history };
             return {
                 protocolVersion: 2,
                 state,
@@ -513,7 +513,7 @@ export function advanceAutonomousCycle(previous: AutonomousAgentState, verificat
         const nextFingerprint = baselineFingerprint(nextBaseline);
         const nextIteration = previous.iteration + 1;
         const ready = evidenceReady(currentDiagnosis);
-        const state = {
+        const state: AutonomousAgentState = {
             ...previous,
             iteration: nextIteration,
             status: ready ? 'changed-failure' : 'needs-evidence',
@@ -533,7 +533,7 @@ export function advanceAutonomousCycle(previous: AutonomousAgentState, verificat
         };
     }
     if (!currentDiagnosis) {
-        const state = { ...previous, status: 'blocked', history };
+        const state: AutonomousAgentState = { ...previous, status: 'blocked', history };
         return {
             protocolVersion: 2,
             state,
