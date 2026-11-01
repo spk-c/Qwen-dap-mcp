@@ -29,7 +29,7 @@ function defaultToolchainCandidates(env: NodeJS.ProcessEnv): string[] {
         }
     }
     else if (process.platform === 'win32') {
-        for (const root of [env.ProgramFiles, env['ProgramFiles(x86)']].filter((value) => Boolean(value))) {
+        for (const root of [env.ProgramFiles, env['ProgramFiles(x86)']].filter((value): value is string => typeof value === 'string' && value.length > 0)) {
             candidates.push(join(root, 'LLVM', 'bin', 'lldb-dap.exe'));
         }
     }
