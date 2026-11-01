@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import * as z from 'zod/v4';
