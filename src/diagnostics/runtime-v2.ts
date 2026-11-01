@@ -31,7 +31,7 @@ type LockEdge = { from: number; to: number; resource: string; evidence: string }
 type CrashFamilyReport = {
     label?: string;
     fingerprint?: string;
-    fingerprintsV2?: { family: string; semantic: string; exact: string };
+    fingerprintsV2?: { family?: string; semantic?: string; exact?: string };
 };
 
 function digest(value: unknown): string {
