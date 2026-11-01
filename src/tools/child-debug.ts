@@ -37,7 +37,6 @@ function safeEnv(value: unknown): NodeJS.ProcessEnv | undefined {
     if (entries.length > 256 || entries.some(([key, entry]) => !key || typeof entry !== 'string')) {
         throw new DapError('Child debug env must contain at most 256 string entries.');
     }
-    // The entries have been validated above; do not widen downstream adapter env to unknown.
     return Object.fromEntries(entries) as NodeJS.ProcessEnv;
 }
 export function sanitizeStartConfiguration(request, overrides) {
