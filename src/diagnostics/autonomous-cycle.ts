@@ -1,7 +1,58 @@
+import type { IntelligentCrashDiagnosis, VerificationBaseline, VerificationResult } from './intelligent-diagnosis.js';
+export type AutonomousAgentStatus =
+    | 'needs-evidence' | 'needs-fix' | 'retry-fix' | 'needs-reproduction'
+    | 'changed-failure' | 'fixed' | 'budget-exhausted' | 'blocked';
+export type AutonomousAgentActionType =
+    | 'collect-evidence' | 'inspect-source' | 'propose-fix' | 'apply-fix'
+    | 'build' | 'reproduce' | 'verify' | 'broaden-diagnosis' | 'stop-and-report';
+export type AutonomousAgentActionStatus = 'pending' | 'satisfied' | 'blocked' | 'skipped';
+export type AutonomousAgentAction = {
+    id: string; type: AutonomousAgentActionType; owner: 'coding-agent' | 'debugger';
+    status: AutonomousAgentActionStatus; instruction: string; requires: string[];
+    input: Record<string, unknown>;
+    expectedResult: { description: string; successCriteria: string[] };
+    evidence?: string[];
+};
+export type AutonomousAgentHistoryEntry = {
+    iteration: number; phase: 'diagnosis' | 'verification'; fingerprint: string;
+    verdict?: VerificationResult['verdict']; confidence?: VerificationResult['confidence'];
+    projectFunction?: string; projectSourcePath?: string; projectLine?: number;
+    summary: string;
+};
+export type AutonomousAgentState = {
+    schemaVersion: 1; iteration: number; maxIterations: number; status: AutonomousAgentStatus;
+    rootBaseline: VerificationBaseline; activeBaseline: VerificationBaseline;
+    rootFingerprint: string; activeFingerprint: string;
+    history: AutonomousAgentHistoryEntry[];
+};
+export type RootCauseBacktrack = {
+    target: {register?: string; variable?: string; value?: string; instruction?: string};
+    runtimeTrail: Array<{
+        frameIndex: number; function: string; variables: string[]; value?: string;
+        role: 'consumer' | 'propagated' | 'producer-candidate'
+    }>;
+    producerCandidates: Array<{frameIndex: number; function: string; sourcePath?: string; line: number; reason: string}>;
+    confidence: 'low' | 'medium' | 'high'; limitation: string;
+};
+export type VerificationQuality = {
+    score: number; grade: 'weak' | 'moderate' | 'strong';
+    checks: {
+        reproduction: 'complete' | 'incomplete';
+        rootCrash: 'gone' | 'reproduced' | 'changed' | 'unknown';
+        newCrash: 'none-observed' | 'present' | 'unknown';
+        build: 'external-unverified'; tests: 'external-unverified'; sameInputs: 'external-unverified';
+    };
+    evidence: string[]; note: string;
+};
+export type AutonomousAgentDecision = {
+    protocolVersion: 2; state: AutonomousAgentState; shouldContinue: boolean;
+    nextActions: AutonomousAgentAction[]; rootCauseBacktrack?: RootCauseBacktrack;
+    verificationQuality?: VerificationQuality; stopReason?: string;
+};
 import { createHash } from 'node:crypto';
 import { normalizeDiagnosticPath } from './path-normalization.js';
-const TERMINAL_STATUSES = new Set(['fixed', 'budget-exhausted', 'blocked']);
-function normalizedValue(value) {
+const TERMINAL_STATUSES = new Set<AutonomousAgentStatus>(['fixed', 'budget-exhausted', 'blocked']);
+function normalizedValue(value: string | undefined): string | undefined {
     if (!value)
         return undefined;
     const compact = value.trim().toLowerCase().replace(/[`'_\s]/g, '');
@@ -24,7 +75,7 @@ function normalizedValue(value) {
     }
     return compact;
 }
-export function baselineFingerprint(baseline) {
+export function baselineFingerprint(baseline: VerificationBaseline): string {
     const canonical = {
         classification: baseline.classification,
         crashLikely: baseline.crashLikely,
@@ -37,7 +88,7 @@ export function baselineFingerprint(baseline) {
     };
     return createHash('sha256').update(JSON.stringify(canonical)).digest('hex').slice(0, 16);
 }
-export function validateAutonomousAgentState(state) {
+export function validateAutonomousAgentState(state: AutonomousAgentState): void {
     if (state.schemaVersion !== 1) {
         throw new Error(`Unsupported autonomous agent state schema version: ${state.schemaVersion}`);
     }
@@ -62,12 +113,12 @@ export function validateAutonomousAgentState(state) {
         throw new Error(`Autonomous agent state active fingerprint mismatch: expected ${expectedActiveFingerprint}, got ${state.activeFingerprint}.`);
     }
 }
-function boundedMaxIterations(value) {
+function boundedMaxIterations(value: number | undefined): number {
     if (value === undefined || !Number.isFinite(value))
         return 3;
     return Math.min(10, Math.max(1, Math.trunc(value)));
 }
-function diagnosisHistory(diagnosis, fingerprint, iteration = 0) {
+function diagnosisHistory(diagnosis: IntelligentCrashDiagnosis, fingerprint: string, iteration = 0): AutonomousAgentHistoryEntry {
     return {
         iteration,
         phase: 'diagnosis',
@@ -78,7 +129,7 @@ function diagnosisHistory(diagnosis, fingerprint, iteration = 0) {
         summary: diagnosis.summary,
     };
 }
-function verificationHistory(state, verification, diagnosis) {
+function verificationHistory(state: AutonomousAgentState, verification: VerificationResult, diagnosis?: IntelligentCrashDiagnosis): AutonomousAgentHistoryEntry {
     const fingerprint = diagnosis
         ? baselineFingerprint(diagnosis.verificationBaseline)
         : state.activeFingerprint;
@@ -98,7 +149,7 @@ function verificationHistory(state, verification, diagnosis) {
         summary: verification.evidence.join(' '),
     };
 }
-export function evidenceReady(diagnosis) {
+export function evidenceReady(diagnosis: IntelligentCrashDiagnosis): boolean {
     if (!diagnosis.classification.crashLikely)
         return false;
     if (!diagnosis.projectFrame.sourcePath)
@@ -108,7 +159,9 @@ export function evidenceReady(diagnosis) {
     return diagnosis.hypotheses.some((item) => item.confidence === 'high' || item.confidence === 'medium')
         || diagnosis.callChain.rootCauseCandidate.confidence === 'high';
 }
-function action(iteration, type, owner, instruction, options) {
+function action(iteration: number, type: AutonomousAgentActionType, owner: AutonomousAgentAction['owner'], instruction: string,
+    options: {requires?: string[]; input?: Record<string, unknown>; expected: string; successCriteria: string[]; evidence?: string[]; status?: AutonomousAgentActionStatus}
+): AutonomousAgentAction {
     return {
         id: `${iteration}:${type}`,
         type,
@@ -124,7 +177,7 @@ function action(iteration, type, owner, instruction, options) {
         ...(options.evidence ? { evidence: options.evidence } : {}),
     };
 }
-export function buildRootCauseBacktrack(diagnosis) {
+export function buildRootCauseBacktrack(diagnosis: IntelligentCrashDiagnosis): RootCauseBacktrack {
     const operand = diagnosis.operandAnalysis.likelyFaultOperand;
     const binding = operand
         ? diagnosis.operandAnalysis.variableBindings.find((candidate) => candidate.register.toLowerCase() === operand.register.toLowerCase())
@@ -192,7 +245,7 @@ export function buildRootCauseBacktrack(diagnosis) {
         limitation: 'This is runtime provenance, not static source dataflow. Exact assignments/returns must be confirmed by reading the listed source frames before editing.',
     };
 }
-export function verificationQuality(verification) {
+export function verificationQuality(verification: VerificationResult): VerificationQuality {
     let score = 25;
     let reproduction = 'incomplete';
     let rootCrash = 'unknown';
@@ -236,7 +289,7 @@ export function verificationQuality(verification) {
         note: 'The score measures debugger evidence only. Build success, project tests and exact reproduction inputs remain external to qwen-dap-mcp and must be reported by the coding/build agent before claiming end-to-end verification.',
     };
 }
-function evidenceActions(diagnosis, iteration) {
+function evidenceActions(diagnosis: IntelligentCrashDiagnosis, iteration: number): AutonomousAgentAction[] {
     const evidence = [
         `projectFrame confidence=${diagnosis.projectFrame.confidence}`,
         `project source=${diagnosis.projectFrame.sourcePath ?? 'missing'}`,
@@ -252,7 +305,7 @@ function evidenceActions(diagnosis, iteration) {
             evidence,
         })];
 }
-function fixActions(diagnosis, state, broaden = false) {
+function fixActions(diagnosis: IntelligentCrashDiagnosis, state: AutonomousAgentState, broaden = false): AutonomousAgentAction[] {
     const iteration = state.iteration;
     const location = `${diagnosis.projectFrame.sourcePath ?? diagnosis.projectFrame.function}:${diagnosis.projectFrame.line}`;
     const backtrack = buildRootCauseBacktrack(diagnosis);
@@ -319,7 +372,7 @@ function fixActions(diagnosis, state, broaden = false) {
     }));
     return output;
 }
-export function startAutonomousCycle(diagnosis, maxIterations) {
+export function startAutonomousCycle(diagnosis: IntelligentCrashDiagnosis, maxIterations?: number): AutonomousAgentDecision {
     const baseline = diagnosis.verificationBaseline;
     const fingerprint = baselineFingerprint(baseline);
     const ready = evidenceReady(diagnosis);
@@ -342,7 +395,7 @@ export function startAutonomousCycle(diagnosis, maxIterations) {
         rootCauseBacktrack: buildRootCauseBacktrack(diagnosis),
     };
 }
-export function refreshAutonomousEvidence(previous, diagnosis) {
+export function refreshAutonomousEvidence(previous: AutonomousAgentState, diagnosis: IntelligentCrashDiagnosis): AutonomousAgentDecision {
     validateAutonomousAgentState(previous);
     if (TERMINAL_STATUSES.has(previous.status)) {
         throw new Error(`Cannot refresh evidence for terminal autonomous agent state '${previous.status}'.`);
@@ -372,19 +425,19 @@ export function refreshAutonomousEvidence(previous, diagnosis) {
         rootCauseBacktrack: buildRootCauseBacktrack(diagnosis),
     };
 }
-function sameFailedFingerprintCount(state) {
+function sameFailedFingerprintCount(state: AutonomousAgentState): number {
     return state.history.filter((item) => item.phase === 'verification'
         && item.verdict === 'not-fixed'
         && item.fingerprint === state.activeFingerprint).length;
 }
-function stopAction(state, instruction, evidence) {
+function stopAction(state: AutonomousAgentState, instruction: string, evidence: string[]): AutonomousAgentAction {
     return action(state.iteration, 'stop-and-report', 'coding-agent', instruction, {
         expected: 'A final evidence report with no further autonomous source edits.',
         successCriteria: ['report preserves fingerprints and verification evidence'],
         evidence,
     });
 }
-export function advanceAutonomousCycle(previous, verification, currentDiagnosis) {
+export function advanceAutonomousCycle(previous: AutonomousAgentState, verification: VerificationResult, currentDiagnosis?: IntelligentCrashDiagnosis): AutonomousAgentDecision {
     validateAutonomousAgentState(previous);
     if (TERMINAL_STATUSES.has(previous.status)) {
         throw new Error(`Cannot advance terminal autonomous agent state '${previous.status}'. Start a new cycle instead.`);
