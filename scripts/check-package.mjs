@@ -5,10 +5,12 @@ import { join } from 'node:path';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
 const ext = JSON.parse(readFileSync(join(root, 'qwen-extension.json'), 'utf8'));
-assert.equal(pkg.version, ext.version, 'Package and Qwen extension versions differ');
+assert.equal(pkg.version, ext.version);
 assert.equal(pkg.type, 'module');
-assert.ok(existsSync(join(root, 'dist/index.js')), 'Missing runnable entrypoint');
-assert.ok(existsSync(join(root, 'skills/native-runtime-debug/SKILL.md')), 'Missing Qwen skill');
+assert.equal(pkg.private, true, 'Fork must not be published to an unverified npm namespace');
+assert.ok(existsSync(join(root, 'dist/index.js')));
+assert.ok(existsSync(join(root, 'dist/index.d.ts')));
+assert.ok(existsSync(join(root, 'skills/native-runtime-debug/SKILL.md')));
 let checked = 0;
 function verify(from, relative = '') {
   for (const entry of readdirSync(from, { withFileTypes: true })) {
@@ -16,11 +18,12 @@ function verify(from, relative = '') {
     const p = join(from, entry.name);
     if (entry.isDirectory()) verify(p, name);
     else if (entry.isFile() && entry.name.endsWith('.js')) {
-      assert.equal(readFileSync(p, 'utf8'), readFileSync(join(root, 'dist', name), 'utf8'), 'Out of sync: ' + name);
+      assert.equal(readFileSync(p, 'utf8'), readFileSync(join(root, 'dist', name), 'utf8'), 'Source/distribution drift: ' + name);
+      assert.ok(existsSync(join(root, 'dist', name.slice(0,-3)+'.d.ts')), 'Missing generated declaration: ' + name);
       checked++;
     }
   }
 }
 verify(join(root, 'src'));
-assert.ok(checked > 40, 'Missing source modules');
-console.log('Verified Qwen extension v' + pkg.version + ' and ' + checked + ' source/distribution modules.');
+assert.ok(checked > 40);
+console.log('Verified version ' + pkg.version + ' and generated JS/declarations for ' + checked + ' modules.');
