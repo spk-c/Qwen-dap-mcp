@@ -24,6 +24,17 @@ type PendingDapRequest = {
     timer: ReturnType<typeof setTimeout>;
     cleanup: () => void;
 };
+type DapWireMessage = {
+    type?: unknown;
+    seq?: unknown;
+    request_seq?: unknown;
+    command?: unknown;
+    event?: unknown;
+    success?: unknown;
+    message?: unknown;
+    body?: unknown;
+    arguments?: unknown;
+};
 type HistoryEvent = { receivedAt: string; event: string; body?: DebugProtocol.Event['body'] };
 type ReverseHistory = { receivedAt: string; command: string; arguments?: DebugProtocol.Request['arguments'] };
 function childHasExited(child: ChildProcessWithoutNullStreams): boolean {
@@ -439,17 +450,17 @@ export class DapConnection extends EventEmitter {
             }
         }
     }
-    handleMessage(message) {
+    handleMessage(message: DapWireMessage | null): void {
         if (message === null || typeof message !== 'object' || Array.isArray(message)
             || !['response', 'event', 'request'].includes(message.type)) {
             throw new DapError('Invalid DAP message envelope: expected a response, event, or reverse request object.');
         }
         if (message.type === 'response') {
-            if (!Number.isSafeInteger(message.request_seq) || message.request_seq < 1
+            if (typeof message.request_seq !== 'number' || !Number.isSafeInteger(message.request_seq) || message.request_seq < 1
                 || typeof message.command !== 'string' || typeof message.success !== 'boolean') {
                 throw new DapError('Invalid DAP response envelope.');
             }
-            const response = message;
+            const response = message as DebugProtocol.Response;
             const pending = this.pending.get(response.request_seq);
             if (!pending) {
                 logger.debug('Received orphan DAP response', { requestSeq: response.request_seq, command: response.command });
@@ -484,7 +495,7 @@ export class DapConnection extends EventEmitter {
         if (message.type === 'event') {
             if (typeof message.event !== 'string' || !message.event)
                 throw new DapError('Invalid DAP event envelope.');
-            const event = message;
+            const event = message as DebugProtocol.Event;
             const record = {
                 receivedAt: new Date().toISOString(),
                 event: event.event,
@@ -499,10 +510,10 @@ export class DapConnection extends EventEmitter {
             return;
         }
         if (message.type === 'request') {
-            if (!Number.isSafeInteger(message.seq) || message.seq < 1
+            if (typeof message.seq !== 'number' || !Number.isSafeInteger(message.seq) || message.seq < 1
                 || typeof message.command !== 'string' || !message.command)
                 throw new DapError('Invalid DAP reverse request envelope.');
-            const request = message;
+            const request = message as DebugProtocol.Request;
             this.reverseRequestHistory.push({
                 receivedAt: new Date().toISOString(),
                 command: request.command,
@@ -515,7 +526,7 @@ export class DapConnection extends EventEmitter {
             this.sendUnsupportedReverseRequest(request);
         }
     }
-    sendUnsupportedReverseRequest(request) {
+    sendUnsupportedReverseRequest(request: DebugProtocol.Request): void {
         const response = {
             seq: this.nextSeq++,
             type: 'response',
