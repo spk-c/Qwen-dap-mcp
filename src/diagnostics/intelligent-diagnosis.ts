@@ -280,7 +280,7 @@ export function analyzeInstructionOperands(evidence: FrameEvidence): OperandAnal
     const referenced = [...new Set([...rawInstruction.matchAll(registerRegex)].map((match) => canonicalize(match[0])))];
     const roles = memoryRegisterRoles(rawInstruction, memoryText, armLike, memoryMatch?.[2] !== undefined, canonicalize);
     const memoryRegisters = new Set(roles.keys());
-    const values = new Map();
+    const values = new Map<string, Array<{ index: number; function: string; variable: string }>>();
     for (const register of evidence.registers)
         values.set(canonicalize(register.name), register);
     const bindings = referenced.map((register) => {
@@ -296,7 +296,7 @@ export function analyzeInstructionOperands(evidence: FrameEvidence): OperandAnal
             ...(suspicious ? { suspicious } : {}),
         };
     });
-    const variableBindings = [];
+    const variableBindings: VariableRegisterBinding[] = [];
     for (const local of evidence.locals) {
         const localValue = parseAddress(local.value);
         if (localValue === undefined)
