@@ -1,4 +1,21 @@
 import * as z from 'zod/v4';
+import type { McpServer } from '@modelcontextprotocol/server';
+import type { DebugProtocol } from '@vscode/debugprotocol';
+import type { GuardedDapSession } from '../dap/guarded-session.js';
+import type { HangAnalysisOptions, HangThreadEvidence } from '../diagnostics/hang-analysis.js';
+
+type HangCaptureOptions = {
+    maxThreads?: number;
+    stackLevels?: number;
+    maxVariablesPerFrame?: number;
+    framesWithVariables?: number;
+    captureTimeoutMs?: number;
+};
+type HangMode = 'current' | 'live' | 'codelldb' | 'lldb-dap' | 'gdb';
+type HangRequest = 'launch' | 'attach';
+type HangObservation = { kind: 'event'; event: { event: string; body?: { threadId?: number; allThreadsStopped?: boolean } } } | { kind: 'timeout' };
+type SessionEventSnapshot = { recentEvents: Array<{ event: string; body?: { threadId?: number; allThreadsStopped?: boolean } }> };
+
 import { buildCodeLldbAttachConfiguration, buildCodeLldbLaunchConfiguration, discoverCodeLldb, } from '../adapters/codelldb.js';
 import { buildGdbDapLaunchConfiguration, buildGdbDapPidAttachConfiguration, discoverGdbDap, } from '../adapters/gdb-dap.js';
 import { buildLldbDapAttachConfiguration, buildLldbDapLaunchConfiguration, discoverLldbDap, } from '../adapters/lldb-dap.js';
@@ -18,38 +35,38 @@ const analysisSchema = z.object({
 }).describe('Project-code hints used when ranking runnable versus blocked threads.');
 const CAPTURE_DEADLINE_PREFIX = 'Hang evidence capture deadline exceeded';
 const PAUSE_DEADLINE_PREFIX = 'Hang pause budget exceeded';
-function errorMessage(error) {
+function errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
 }
-function errorResult(error) {
-    return { content: [{ type: 'text', text: errorMessage(error) }], isError: true };
+function errorResult(error: unknown) {
+    return { content: [{ type: 'text' as const, text: errorMessage(error) }], isError: true };
 }
-function deadlineError(prefix, operation) {
+function deadlineError(prefix: string, operation: string): DapError {
     return new DapError(`${prefix} before ${operation}.`);
 }
-function captureDeadlineError(operation) {
+function captureDeadlineError(operation: string): DapError {
     return deadlineError(CAPTURE_DEADLINE_PREFIX, operation);
 }
-function pauseDeadlineError(operation) {
+function pauseDeadlineError(operation: string): DapError {
     return deadlineError(PAUSE_DEADLINE_PREFIX, operation);
 }
-function isCaptureDeadlineError(error) {
+function isCaptureDeadlineError(error: unknown): boolean {
     return error instanceof Error && error.message.startsWith(CAPTURE_DEADLINE_PREFIX);
 }
-function isPauseDeadlineError(error) {
+function isPauseDeadlineError(error: unknown): boolean {
     return error instanceof Error && error.message.startsWith(PAUSE_DEADLINE_PREFIX);
 }
-async function withDeadline(deadline, operation, makeError, action) {
+async function withDeadline<T>(deadline: number, operation: string, makeError: (operation: string) => Error, action: () => Promise<T>): Promise<T> {
     const remainingMs = deadline - Date.now();
     if (remainingMs <= 0)
         throw makeError(operation);
-    let timer;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const request = action();
     void request.catch(() => undefined);
     try {
         return await Promise.race([
             request,
-            new Promise((_resolve, reject) => {
+            new Promise<never>((_resolve, reject) => {
                 timer = setTimeout(() => reject(makeError(operation)), remainingMs);
             }),
         ]);
@@ -59,13 +76,13 @@ async function withDeadline(deadline, operation, makeError, action) {
             clearTimeout(timer);
     }
 }
-async function withCaptureDeadline(deadline, operation, action) {
+async function withCaptureDeadline<T>(deadline: number, operation: string, action: () => Promise<T>): Promise<T> {
     return withDeadline(deadline, operation, captureDeadlineError, action);
 }
-async function withPauseDeadline(deadline, operation, action) {
+async function withPauseDeadline<T>(deadline: number, operation: string, action: () => Promise<T>): Promise<T> {
     return withDeadline(deadline, operation, pauseDeadlineError, action);
 }
-function recentExecutionState(snapshot) {
+function recentExecutionState(snapshot: SessionEventSnapshot): string {
     for (const record of [...snapshot.recentEvents].reverse()) {
         const event = record.event;
         if (event === 'stopped')
@@ -79,7 +96,7 @@ function recentExecutionState(snapshot) {
     }
     return 'unknown';
 }
-function latestStoppedBody(snapshot) {
+function latestStoppedBody(snapshot: SessionEventSnapshot): { threadId?: number; allThreadsStopped?: boolean } | undefined {
     for (const record of [...snapshot.recentEvents].reverse()) {
         const candidate = record;
         if (candidate.event === 'stopped') {
@@ -91,13 +108,13 @@ function latestStoppedBody(snapshot) {
     }
     return undefined;
 }
-function createObservationWait(session, observeMs) {
+function createObservationWait(session: GuardedDapSession, observeMs: number) {
     let active = true;
-    let timer;
-    let handler;
-    let onAdapterExit;
-    let onAdapterError;
-    let resolvePromise;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let handler!: (event: { event: string; body?: { threadId?: number; allThreadsStopped?: boolean } }) => void;
+    let onAdapterExit!: (detail: unknown) => void;
+    let onAdapterError!: (error: unknown) => void;
+    let resolvePromise!: (value: HangObservation) => void;
     const cleanup = () => {
         if (!active)
             return;
@@ -107,9 +124,7 @@ function createObservationWait(session, observeMs) {
         session.connection.off('adapterExit', onAdapterExit);
         session.connection.off('adapterError', onAdapterError);
     };
-    const promise = new Promise<
-        {kind: 'event'; event: {event: string; body?: any}} | {kind: 'timeout'}
-    >((resolve, reject) => {
+    const promise = new Promise<HangObservation>((resolve, reject) => {
         resolvePromise = resolve;
         handler = (event) => {
             if (!['stopped', 'exited', 'terminated'].includes(event.event))
@@ -143,11 +158,11 @@ function createObservationWait(session, observeMs) {
         },
     };
 }
-async function pauseThreadsBestEffort(session, threads, excludedThreadId, pauseTimeoutMs, deadline) {
+async function pauseThreadsBestEffort(session: GuardedDapSession, threads: DebugProtocol.Thread[], excludedThreadId: number | undefined, pauseTimeoutMs: number, deadline: number) {
     const pauseErrors = [];
     let allThreadsStopped = false;
     let budgetExpired = false;
-    const requestedThreadIds = [];
+    const requestedThreadIds: number[] = [];
     for (const thread of threads) {
         if (thread.id === excludedThreadId)
             continue;
@@ -176,7 +191,7 @@ async function pauseThreadsBestEffort(session, threads, excludedThreadId, pauseT
     }
     return { allThreadsStopped, pauseErrors, requestedThreadIds, budgetExpired };
 }
-async function pauseForHangCapture(session, pauseTimeoutMs, pauseBudgetMs = 30_000) {
+async function pauseForHangCapture(session: GuardedDapSession, pauseTimeoutMs: number, pauseBudgetMs = 30_000) {
     if (session.isPostmortem()) {
         return {
             requested: false,
@@ -280,9 +295,9 @@ async function pauseForHangCapture(session, pauseTimeoutMs, pauseBudgetMs = 30_0
                 : 'the adapter never confirmed allThreadsStopped=true; all other threads received bounded best-effort pause requests',
     };
 }
-function dedupeVariables(variables) {
-    const seen = new Set();
-    const output = [];
+function dedupeVariables(variables: DebugProtocol.Variable[]): DebugProtocol.Variable[] {
+    const seen = new Set<string>();
+    const output: DebugProtocol.Variable[] = [];
     for (const variable of variables) {
         const key = [
             variable.name,
@@ -299,9 +314,9 @@ function dedupeVariables(variables) {
     }
     return output;
 }
-async function collectFrameVariables(session, frame, frameIndex, maxVariablesPerFrame, deadline) {
+async function collectFrameVariables(session: GuardedDapSession, frame: DebugProtocol.StackFrame, frameIndex: number, maxVariablesPerFrame: number, deadline: number) {
     const collectionErrors = [];
-    let scopes = [];
+    let scopes: DebugProtocol.Scope[] = [];
     try {
         scopes = await withCaptureDeadline(deadline, `scopes for frame ${frame.id}`, () => session.scopes(frame.id));
     }
@@ -311,7 +326,7 @@ async function collectFrameVariables(session, frame, frameIndex, maxVariablesPer
             return { frameIndex, frame, variables: [], collectionErrors };
         }
     }
-    const variables = [];
+    const variables: DebugProtocol.Variable[] = [];
     for (const scope of scopes
         .filter((item) => /locals?|arguments?|parameters?/i.test(item.name))
         .slice(0, 3)) {
@@ -333,13 +348,7 @@ async function collectFrameVariables(session, frame, frameIndex, maxVariablesPer
         ...(collectionErrors.length === 0 ? {} : { collectionErrors }),
     };
 }
-export async function captureAllThreadHangEvidence(session, captureOptions: {
-    maxThreads?: number;
-    stackLevels?: number;
-    maxVariablesPerFrame?: number;
-    framesWithVariables?: number;
-    captureTimeoutMs?: number;
-} = {}, analysisOptions = {}) {
+export async function captureAllThreadHangEvidence(session: GuardedDapSession, captureOptions: HangCaptureOptions = {}, analysisOptions: HangAnalysisOptions = {}): Promise<HangThreadEvidence[]> {
     const maxThreads = captureOptions.maxThreads ?? 32;
     const stackLevels = captureOptions.stackLevels ?? 24;
     const maxVariablesPerFrame = captureOptions.maxVariablesPerFrame ?? 50;
@@ -347,7 +356,7 @@ export async function captureAllThreadHangEvidence(session, captureOptions: {
     const captureTimeoutMs = captureOptions.captureTimeoutMs ?? 30_000;
     const deadline = Date.now() + captureTimeoutMs;
     const threads = (await withCaptureDeadline(deadline, 'thread enumeration', () => session.threads())).slice(0, maxThreads);
-    const output = [];
+    const output: HangThreadEvidence[] = [];
     let captureDeadlineExpired = false;
     for (const thread of threads) {
         if (captureDeadlineExpired || Date.now() >= deadline) {
@@ -361,7 +370,7 @@ export async function captureAllThreadHangEvidence(session, captureOptions: {
             continue;
         }
         const collectionErrors = [];
-        let stack = [];
+        let stack: DebugProtocol.StackFrame[] = [];
         try {
             stack = await withCaptureDeadline(deadline, `stackTrace for thread ${thread.id}`, () => session.stackTrace(thread.id, 0, stackLevels));
         }
@@ -378,7 +387,7 @@ export async function captureAllThreadHangEvidence(session, captureOptions: {
         ]
             .filter((value, index, values) => values.indexOf(value) === index)
             .slice(0, framesWithVariables);
-        const variableFrames = [];
+        const variableFrames: HangThreadEvidence['variableFrames'] = [];
         if (!captureDeadlineExpired && Date.now() < deadline) {
             for (const frameIndex of frameIndexes) {
                 const frame = stack[frameIndex];
@@ -415,14 +424,14 @@ export async function captureAllThreadHangEvidence(session, captureOptions: {
     }
     return output;
 }
-async function captureAndAnalyze(session, captureOptions, analysisOptions) {
+async function captureAndAnalyze(session: GuardedDapSession, captureOptions: HangCaptureOptions, analysisOptions: HangAnalysisOptions) {
     const evidence = await captureAllThreadHangEvidence(session, captureOptions, analysisOptions);
     return {
         evidence,
         diagnosis: analyzeHang(evidence, analysisOptions),
     };
 }
-async function resetOwnedSessionAfterFailure(session, error) {
+async function resetOwnedSessionAfterFailure(session: GuardedDapSession, error: unknown): Promise<never> {
     try {
         await session.reset();
     }
@@ -435,7 +444,7 @@ async function resetOwnedSessionAfterFailure(session, error) {
     }
     throw error;
 }
-async function observeLaunchedOrAttachedTarget(session, request, configuration, observeMs, pauseTimeoutMs, pauseBudgetMs, captureOptions, analysisOptions) {
+async function observeLaunchedOrAttachedTarget(session: GuardedDapSession, request: HangRequest, configuration: Record<string, unknown>, observeMs: number, pauseTimeoutMs: number, pauseBudgetMs: number, captureOptions: HangCaptureOptions, analysisOptions: HangAnalysisOptions) {
     const observation = createObservationWait(session, observeMs);
     void observation.promise.catch(() => undefined);
     let requestResult;
@@ -494,7 +503,7 @@ async function observeLaunchedOrAttachedTarget(session, request, configuration, 
         status: session.snapshot(),
     };
 }
-function validateOwnedRequest(mode, request, program, pid) {
+function validateOwnedRequest(mode: HangMode, request: HangRequest, program: string | undefined, pid: number | undefined): void {
     if (request === 'launch' && !program) {
         throw new DapError(`debug_this_hang mode='${mode}' request='launch' requires program.`);
     }
@@ -502,7 +511,7 @@ function validateOwnedRequest(mode, request, program, pid) {
         throw new DapError(`debug_this_hang mode='${mode}' request='attach' requires pid.`);
     }
 }
-export function registerHangDiagnosticTool(server, session) {
+export function registerHangDiagnosticTool(server: McpServer, session: GuardedDapSession): void {
     server.registerTool('debug_this_hang', {
         title: 'Debug This Hang',
         description: 'High-level native hang workflow for all-thread triage. Use it when a live process appears stuck, deadlocked, waiting forever, or spinning and you need bounded stacks from every thread, wait-state/deadlock heuristics, and cross-thread Pointer-Provenance v2. In current mode it inspects an existing configured session and pauses a running live target when necessary; codelldb, lldb-dap, gdb, and live modes can launch or attach to an authorized local target, observe it for a bounded interval, then pause it for evidence. Do not use executable/attach modes when target execution or debugger control is not authorized, and do not treat a deadlock-candidate as a proven lock cycle because generic DAP does not expose portable lock ownership.',
