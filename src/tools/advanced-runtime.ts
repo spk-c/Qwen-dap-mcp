@@ -1,4 +1,3 @@
-// @ts-nocheck
 import * as z from 'zod/v4';
 import { analyzeKnownApiCall, analyzeStackIntegrity, buildBreakpointPlan, buildFailureHypotheses, crashFingerprintsV2, } from '../diagnostics/runtime-v2.js';
 import { traceValue, findObservedValue } from './value-tracing.js';
