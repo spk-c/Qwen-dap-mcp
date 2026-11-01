@@ -44,7 +44,7 @@ jobs:
           echo "NATIVE_DAP_PATH=$path" >> "$GITHUB_ENV"
           echo "NATIVE_DAP_BINARY=$GITHUB_WORKSPACE/integration/bin/native-debug" >> "$GITHUB_ENV"
           echo "RUN_NATIVE_DEBUGGER_TESTS=1" >> "$GITHUB_ENV"
-      - run: npm install --ignore-scripts --no-audit --no-fund
+      - run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Execute real DAP integration tests
         run: node --test integration/native-debug.mjs
   native-windows-codelldb:
@@ -79,6 +79,6 @@ jobs:
           $cmd = "$quote$vcvars$quote && cl.exe /nologo /std:c++17 /Zi /Od /EHsc integration\fixture\native-debug.cpp /Fe:integration\bin\native-debug.exe /link /DEBUG"
           cmd /c $cmd
           if ($LASTEXITCODE -ne 0) { throw "MSVC compile failed: $LASTEXITCODE" }
-      - run: npm install --ignore-scripts --no-audit --no-fund
+      - run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Execute real CodeLLDB integration tests
         run: node --test integration/native-debug.mjs
