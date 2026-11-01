@@ -1,3 +1,37 @@
+import type { DebugProtocol } from '@vscode/debugprotocol';
+import type { RuntimeSnapshot } from '../dap/session.js';
+import type { CrashDiagnosis, DiagnosisCategory, DiagnosisConfidence, DiagnosisHypothesis } from './analyze-snapshot.js';
+export type IntelligentDiagnosisOptions = { projectRoots?: string[]; projectModules?: string[]; program?: string; cwd?: string; callerDepth?: number };
+export type FrameAssessment = { index: number; frame: DebugProtocol.StackFrame; score: number; projectControlled: boolean; runtimeLikely: boolean; confidence: DiagnosisConfidence; reasons: string[] };
+export type ProjectFrameSelection = { selected: FrameAssessment; assessments: FrameAssessment[]; skippedRuntimeFrames: number; usedExplicitProjectHint: boolean };
+export type FrameEvidence = { index: number; frame: DebugProtocol.StackFrame; locals: DebugProtocol.Variable[]; registers: DebugProtocol.Variable[]; disassembly?: DebugProtocol.DisassembledInstruction[]; collectionErrors?: string[] };
+export type MemoryRegisterRole = 'base' | 'index' | 'offset' | 'unknown';
+export type RegisterBinding = { register: string; canonicalRegister: string; value?: string; referencedByMemoryOperand: boolean; memoryRole?: MemoryRegisterRole; suspicious?: 'null-like' | 'poison-pattern' };
+export type VariableRegisterBinding = { variable: string; variableType?: string; variableValue: string; register: string; registerValue: string; confidence: DiagnosisConfidence; reason: string };
+export type OperandAnalysis = { frameIndex?: number; instruction?: DebugProtocol.DisassembledInstruction; mnemonic?: string; rawInstruction?: string; referencedRegisters: RegisterBinding[]; memoryOperand?: string; variableBindings: VariableRegisterBinding[]; likelyFaultOperand?: { register: string; value?: string; reason: string; confidence: DiagnosisConfidence; faultingFrame: boolean } };
+export type CallChainFrame = { index: number; function: string; moduleId?: number | string; sourcePath?: string; line: number; role: 'fault' | 'project-fault' | 'project-caller' | 'runtime-boundary' | 'other'; projectControlled: boolean; runtimeLikely: boolean; score: number };
+export type CallChainAnalysis = {
+    frames: CallChainFrame[]; firstProjectFrame: CallChainFrame; runtimeBoundaryDepth: number; projectCallerFrames: CallChainFrame[];
+    repeatedFunctions: Array<{ function: string; count: number }>;
+    provenance: Array<{ value: string; frames: Array<{ index: number; function: string; variables: string[] }>; confidence: DiagnosisConfidence }>;
+    rootCauseCandidate: { frame: CallChainFrame; confidence: DiagnosisConfidence; rationale: string[] };
+};
+export type FixWorkflow = {
+    status: 'proposal-only' | 'evidence-required';
+    candidateLocation: { function: string; sourcePath?: string; line: number };
+    hypothesis?: DiagnosisHypothesis;
+    suggestedChanges: string[];
+    phases: Array<{ phase: 'diagnose' | 'fix' | 'rebuild' | 'reproduce' | 'verify'; state: 'complete' | 'agent-action-required' | 'ready-after-rebuild' | 'not-applicable'; instruction: string }>;
+};
+export type VerificationBaseline = {
+    classification: DiagnosisCategory; crashLikely: boolean; faultFunction: string; projectFunction: string; projectSourcePath?: string; projectLine: number; hypothesisKinds: string[]; suspiciousNames: string[];
+};
+export type VerificationResult = { verdict: 'fixed' | 'not-fixed' | 'changed-failure' | 'inconclusive'; confidence: DiagnosisConfidence; evidence: string[] };
+export type IntelligentCrashDiagnosis = CrashDiagnosis & {
+    projectFrame: { index: number; function: string; moduleId?: number | string; sourcePath?: string; sourceName?: string; line: number; column: number; instructionPointerReference?: string; confidence: DiagnosisConfidence; reasons: string[] };
+    frameSelection: ProjectFrameSelection; operandAnalysis: OperandAnalysis; callChain: CallChainAnalysis; fixWorkflow: FixWorkflow; verificationBaseline: VerificationBaseline;
+};
+type BaselineInput = Pick<IntelligentCrashDiagnosis, 'classification' | 'faultLocation' | 'projectFrame' | 'hypotheses' | 'suspiciousValues'>;
 import path from 'node:path';
 import { diagnosticPathWithinRoot, normalizeDiagnosticPath } from './path-normalization.js';
 const RUNTIME_MODULE_RE = /^(?:ntdll|kernel32|kernelbase|ucrtbase|vcruntime\d*|msvcp\d*|libc(?:\+\+)?|libstdc\+\+|libgcc_s|libpthread|libm|ld-linux|libsystem_[^/\\]*|dyld|objc|corefoundation)(?:\.[^/\\]+)?$/i;
@@ -12,27 +46,27 @@ const POISON_PATTERNS = [
     '0xdeadbeef',
     '0xbaadf00d',
 ];
-function portableBasename(value) {
+function portableBasename(value: string): string {
     return value.replace(/\\/g, '/').split('/').filter(Boolean).pop() ?? value;
 }
-function portableDirname(value) {
+function portableDirname(value: string): string | undefined {
     const result = /^[a-z]:[\\/]/i.test(value) ? path.win32.dirname(value) : path.dirname(value);
     return result === '.' ? undefined : result;
 }
-function sourcePath(frame) {
+function sourcePath(frame: DebugProtocol.StackFrame): string | undefined {
     return frame.source?.path ?? frame.source?.name;
 }
-function moduleBasename(frame) {
+function moduleBasename(frame: DebugProtocol.StackFrame): string {
     return portableBasename(String(frame.moduleId ?? '')).toLowerCase();
 }
-function confidenceFromScore(score) {
+function confidenceFromScore(score: number): DiagnosisConfidence {
     if (score >= 80)
         return 'high';
     if (score >= 30)
         return 'medium';
     return 'low';
 }
-function projectHints(options) {
+function projectHints(options: IntelligentDiagnosisOptions) {
     const roots = new Set();
     const addRoot = (value) => {
         const normalized = normalizeDiagnosticPath(value);
@@ -49,7 +83,7 @@ function projectHints(options) {
         modules.add(portableBasename(options.program).toLowerCase());
     return { roots, modules };
 }
-export function assessProjectFrames(stack, options = {}) {
+export function assessProjectFrames(stack: DebugProtocol.StackFrame[], options: IntelligentDiagnosisOptions = {}): FrameAssessment[] {
     const hints = projectHints(options);
     return stack.map((frame, index) => {
         const reasons = [];
@@ -97,7 +131,7 @@ export function assessProjectFrames(stack, options = {}) {
         };
     });
 }
-export function selectProjectFrame(stack, options = {}) {
+export function selectProjectFrame(stack: DebugProtocol.StackFrame[], options: IntelligentDiagnosisOptions = {}): ProjectFrameSelection {
     if (stack.length === 0)
         throw new Error('Cannot select a project frame from an empty stack.');
     const assessments = assessProjectFrames(stack, options);
@@ -114,7 +148,7 @@ export function selectProjectFrame(stack, options = {}) {
         usedExplicitProjectHint: hints.roots.size > 0 || hints.modules.size > 0,
     };
 }
-function parseAddress(value) {
+function parseAddress(value: string | undefined): bigint | undefined {
     if (!value)
         return undefined;
     const normalized = value.trim().replace(/[`'_\s]/g, '');
@@ -130,7 +164,7 @@ function parseAddress(value) {
     }
     return undefined;
 }
-function suspiciousKind(value) {
+function suspiciousKind(value: string | undefined): 'null-like' | 'poison-pattern' | undefined {
     if (!value)
         return undefined;
     const compact = value.trim().toLowerCase().replace(/[`'_\s]/g, '');
@@ -140,12 +174,12 @@ function suspiciousKind(value) {
         return 'poison-pattern';
     return undefined;
 }
-function looksPointerLike(variable) {
+function looksPointerLike(variable: DebugProtocol.Variable): boolean {
     return /\*|pointer|ptr\b|address|handle|\bthis\b|\bself\b|object|reference/i.test(`${variable.name} ${variable.type ?? ''}`);
 }
 const X86_REGISTER_RE = /\b(?:r(?:ax|bx|cx|dx|si|di|sp|bp|ip|8|9|1[0-5])|r(?:8|9|1[0-5])(?:d|w|b)|e(?:ax|bx|cx|dx|si|di|sp|bp|ip)|(?:ax|bx|cx|dx|si|di|sp|bp|ip)|[abcd][lh]|[sd]il|[sb]pl)\b/gi;
 const ARM_REGISTER_RE = /\b(?:[xw](?:[0-9]|[12][0-9]|30)|sp|pc|lr)\b/gi;
-function canonicalX86Register(value) {
+function canonicalX86Register(value: string): string {
     const name = value.toLowerCase();
     const aliases = {
         eax: 'rax', ax: 'rax', al: 'rax', ah: 'rax',
@@ -162,14 +196,14 @@ function canonicalX86Register(value) {
         return aliases[name];
     return /^(r(?:8|9|1[0-5]))(?:d|w|b)$/.exec(name)?.[1] ?? name;
 }
-function canonicalArmRegister(value) {
+function canonicalArmRegister(value: string): string {
     const name = value.toLowerCase();
     if (name === 'lr')
         return 'x30';
     const match = /^w(\d+)$/.exec(name)?.[1];
     return match ? `x${match}` : name;
 }
-function currentInstruction(evidence) {
+function currentInstruction(evidence: FrameEvidence): DebugProtocol.DisassembledInstruction | undefined {
     const instructions = evidence.disassembly ?? [];
     const ip = evidence.frame.instructionPointerReference;
     if (!ip)
@@ -194,7 +228,7 @@ function currentInstruction(evidence) {
     }
     return nearest;
 }
-function memoryRegisterRoles(rawInstruction, memoryText, armLike, attMemorySyntax, canonicalize) {
+function memoryRegisterRoles(rawInstruction: string, memoryText: string, armLike: boolean, attMemorySyntax: boolean, canonicalize: (value: string) => string): Map<string, MemoryRegisterRole> {
     const regex = armLike ? ARM_REGISTER_RE : X86_REGISTER_RE;
     const matches = [...memoryText.matchAll(regex)];
     const roles = new Map();
@@ -232,7 +266,7 @@ function memoryRegisterRoles(rawInstruction, memoryText, armLike, attMemorySynta
     }
     return roles;
 }
-export function analyzeInstructionOperands(evidence) {
+export function analyzeInstructionOperands(evidence: FrameEvidence): OperandAnalysis {
     const instruction = currentInstruction(evidence);
     const rawInstruction = instruction?.instruction;
     if (!rawInstruction)
@@ -318,7 +352,7 @@ export function analyzeInstructionOperands(evidence) {
             : {}),
     };
 }
-function compactFrame(assessment, role) {
+function compactFrame(assessment: FrameAssessment, role: CallChainFrame['role']): CallChainFrame {
     const source = sourcePath(assessment.frame);
     return {
         index: assessment.index,
@@ -332,11 +366,11 @@ function compactFrame(assessment, role) {
         score: assessment.score,
     };
 }
-function comparableValue(value) {
+function comparableValue(value: string): string | undefined {
     const parsed = parseAddress(value);
     return parsed === undefined ? undefined : `0x${parsed.toString(16)}`;
 }
-function buildProvenance(evidence) {
+function buildProvenance(evidence: FrameEvidence[]): CallChainAnalysis['provenance'] {
     const values = new Map();
     for (const frame of evidence) {
         for (const variable of frame.locals) {
@@ -374,7 +408,7 @@ function buildProvenance(evidence) {
     }
     return output.slice(0, 8);
 }
-export function analyzeCallChain(selection, evidence) {
+export function analyzeCallChain(selection: ProjectFrameSelection, evidence: FrameEvidence[]): CallChainAnalysis {
     const selectedIndex = selection.selected.index;
     const frames = selection.assessments.map((assessment) => {
         let role = 'other';
@@ -428,10 +462,10 @@ export function analyzeCallChain(selection, evidence) {
         },
     };
 }
-function primaryHypothesis(base) {
+function primaryHypothesis(base: CrashDiagnosis): DiagnosisHypothesis | undefined {
     return base.hypotheses.find((item) => item.confidence === 'high') ?? base.hypotheses[0];
 }
-function suggestedChanges(base, operand, chain) {
+function suggestedChanges(base: CrashDiagnosis, operand: OperandAnalysis, chain: CallChainAnalysis): string[] {
     const output = [];
     const variableBinding = operand.variableBindings[0];
     const suspiciousOperand = operand.likelyFaultOperand;
@@ -472,7 +506,7 @@ function suggestedChanges(base, operand, chain) {
     }
     return [...new Set(output)].slice(0, 6);
 }
-function buildFixWorkflow(base, selection, operand, chain) {
+function buildFixWorkflow(base: CrashDiagnosis, selection: ProjectFrameSelection, operand: OperandAnalysis, chain: CallChainAnalysis): FixWorkflow {
     const frame = selection.selected.frame;
     const source = sourcePath(frame);
     const hypothesis = primaryHypothesis(base);
@@ -553,7 +587,7 @@ function buildFixWorkflow(base, selection, operand, chain) {
         ],
     };
 }
-export function createVerificationBaseline(diagnosis) {
+export function createVerificationBaseline(diagnosis: BaselineInput): VerificationBaseline {
     return {
         classification: diagnosis.classification.category,
         crashLikely: diagnosis.classification.crashLikely,
@@ -565,7 +599,7 @@ export function createVerificationBaseline(diagnosis) {
         suspiciousNames: diagnosis.suspiciousValues.map((item) => item.name).slice(0, 12),
     };
 }
-export function compareVerificationBaseline(baseline, current, terminal) {
+export function compareVerificationBaseline(baseline: VerificationBaseline, current: IntelligentCrashDiagnosis | undefined, terminal?: { event: 'exited' | 'terminated'; exitCode?: number }): VerificationResult {
     if (terminal?.event === 'exited' && terminal.exitCode === 0) {
         return {
             verdict: 'fixed',
@@ -619,7 +653,7 @@ export function compareVerificationBaseline(baseline, current, terminal) {
         ],
     };
 }
-export function buildIntelligentDiagnosis(snapshot, base, selection, evidence) {
+export function buildIntelligentDiagnosis(snapshot: RuntimeSnapshot, base: CrashDiagnosis, selection: ProjectFrameSelection, evidence: FrameEvidence[]): IntelligentCrashDiagnosis {
     const selectedEvidence = evidence.find((item) => item.index === selection.selected.index) ?? {
         index: selection.selected.index,
         frame: selection.selected.frame,
