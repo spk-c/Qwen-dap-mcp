@@ -1,13 +1,17 @@
-export function normalizeEnvironmentOverrides(overrides, base = process.env, platform = process.platform) {
+export function normalizeEnvironmentOverrides(
+    overrides: NodeJS.ProcessEnv | undefined,
+    base: NodeJS.ProcessEnv = process.env,
+    platform: NodeJS.Platform = process.platform,
+): NodeJS.ProcessEnv {
     if (!overrides)
         return {};
     if (platform !== 'win32')
         return { ...overrides };
-    const baseKeys = new Map();
+    const baseKeys = new Map<string, string>();
     for (const key of Object.keys(base)) {
         baseKeys.set(key.toUpperCase(), key);
     }
-    const normalized = {};
+    const normalized: NodeJS.ProcessEnv = {};
     for (const [key, value] of Object.entries(overrides)) {
         const folded = key.toUpperCase();
         const canonical = baseKeys.get(folded) ?? key;
@@ -19,7 +23,11 @@ export function normalizeEnvironmentOverrides(overrides, base = process.env, pla
     }
     return normalized;
 }
-export function mergeEnvironment(base = process.env, overrides, platform = process.platform) {
+export function mergeEnvironment(
+    base: NodeJS.ProcessEnv = process.env,
+    overrides?: NodeJS.ProcessEnv,
+    platform: NodeJS.Platform = process.platform,
+): NodeJS.ProcessEnv {
     return {
         ...base,
         ...normalizeEnvironmentOverrides(overrides, base, platform),
