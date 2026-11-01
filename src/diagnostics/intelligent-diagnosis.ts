@@ -63,7 +63,7 @@ export function assessProjectFrames(stack, options = {}) {
         if (source) {
             score += 25;
             reasons.push('frame has source information');
-            if ([...hints.roots].some((root) => diagnosticPathWithinRoot(source, root))) {
+            if ([...hints.roots].some((root) => typeof root === 'string' && diagnosticPathWithinRoot(source, root))) {
                 score += 120;
                 reasons.push('source is inside an explicit/inferred project root');
             }
