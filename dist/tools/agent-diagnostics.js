@@ -408,7 +408,7 @@ export function registerAgentDiagnosticTools(server, session) {
                 projectCorrelation: correlateSourceDisassembly(projectSnapshot),
                 projectFrame: selectedFrame,
                 operandAnalysis: analyzeInstructionOperands(evidence),
-                ...(evidence.collectionErrors?.length ? { collectionErrors: evidence.collectionErrors } : {}),
+                ...('collectionErrors' in evidence && evidence.collectionErrors?.length ? { collectionErrors: evidence.collectionErrors } : {}),
             });
         }
         catch (error) {
