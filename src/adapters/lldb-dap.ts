@@ -1,0 +1,176 @@
+// @ts-nocheck
+import { statSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { DapError } from '../dap/errors.js';
+import { resolveExistingDirectory, resolveExistingFile } from '../local-path.js';
+import { buildRemoteTcpEndpoint } from '../remote-endpoint.js';
+function isFile(path) {
+    try {
+        return statSync(path).isFile();
+    }
+    catch {
+        return false;
+    }
+}
+const LLVM_VERSIONS = ['23', '22', '21', '20', '19', '18', '17'];
+function executableNames() {
+    if (process.platform === 'win32')
+        return ['lldb-dap.exe'];
+    return ['lldb-dap', ...LLVM_VERSIONS.map((version) => `lldb-dap-${version}`)];
+}
+function defaultToolchainCandidates(env) {
+    const candidates = [];
+    if (env.LLVM_HOME) {
+        candidates.push(join(resolve(env.LLVM_HOME), 'bin', process.platform === 'win32' ? 'lldb-dap.exe' : 'lldb-dap'));
+    }
+    if (process.platform === 'linux') {
+        for (const version of LLVM_VERSIONS) {
+            candidates.push(`/usr/lib/llvm-${version}/bin/lldb-dap`);
+        }
+    }
+    else if (process.platform === 'win32') {
+        for (const root of [env.ProgramFiles, env['ProgramFiles(x86)']].filter((value) => Boolean(value))) {
+            candidates.push(join(root, 'LLVM', 'bin', 'lldb-dap.exe'));
+        }
+    }
+    return [...new Set(candidates)];
+}
+function findOnPath(command) {
+    const locator = process.platform === 'win32' ? 'where.exe' : 'which';
+    const result = spawnSync(locator, [command], {
+        encoding: 'utf8',
+        windowsHide: true,
+        shell: false,
+        timeout: 5_000,
+        maxBuffer: 64 * 1024,
+    });
+    if (result.error || result.status !== 0 || !result.stdout)
+        return undefined;
+    const first = result.stdout
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .find(Boolean);
+    return first && isFile(first) ? first : undefined;
+}
+function findWithXcrun() {
+    if (process.platform !== 'darwin')
+        return undefined;
+    const result = spawnSync('xcrun', ['--find', 'lldb-dap'], {
+        encoding: 'utf8',
+        windowsHide: true,
+        shell: false,
+        timeout: 5_000,
+        maxBuffer: 64 * 1024,
+    });
+    if (result.error || result.status !== 0 || !result.stdout)
+        return undefined;
+    const candidate = result.stdout.trim();
+    return candidate && isFile(candidate) ? candidate : undefined;
+}
+export function discoverLldbDap(options = {}) {
+    const env = options.env ?? process.env;
+    const searched = [];
+    if (options.explicitPath) {
+        const candidate = resolveExistingFile(options.explicitPath, 'lldb-dap adapter');
+        searched.push(candidate);
+        return { command: candidate, source: 'explicit', searched };
+    }
+    if (env.LLDB_DAP_PATH) {
+        const candidate = resolve(env.LLDB_DAP_PATH);
+        searched.push(candidate);
+        if (isFile(candidate))
+            return { command: candidate, source: 'environment', searched };
+    }
+    if (options.allowPathFallback !== false) {
+        for (const name of executableNames()) {
+            searched.push(name);
+            const candidate = findOnPath(name);
+            if (candidate)
+                return { command: candidate, source: 'path', searched };
+        }
+    }
+    if (options.allowToolchainFallback !== false) {
+        for (const rawCandidate of options.toolchainCandidates ?? defaultToolchainCandidates(env)) {
+            const candidate = resolve(rawCandidate);
+            searched.push(candidate);
+            if (isFile(candidate))
+                return { command: candidate, source: 'toolchain', searched };
+        }
+    }
+    if (options.allowXcrunFallback !== false && process.platform === 'darwin') {
+        searched.push('xcrun --find lldb-dap');
+        const candidate = findWithXcrun();
+        if (candidate)
+            return { command: candidate, source: 'xcrun', searched };
+    }
+    throw new Error(`lldb-dap was not found. Install LLDB, set LLDB_DAP_PATH/LLVM_HOME, or pass adapterPath. Searched: ${searched.join(', ')}`);
+}
+export function buildLldbDapLaunchConfiguration(options) {
+    const program = resolveExistingFile(options.program, 'Program executable');
+    const cwd = options.cwd
+        ? resolveExistingDirectory(options.cwd, 'Working directory')
+        : dirname(program);
+    return {
+        type: 'lldb-dap',
+        request: 'launch',
+        name: 'qwen-dap-mcp lldb-dap launch',
+        program,
+        args: options.args ?? [],
+        cwd,
+        ...(options.env ? { env: options.env } : {}),
+        stopOnEntry: options.stopOnEntry ?? false,
+    };
+}
+export function buildLldbDapAttachConfiguration(options) {
+    if (!Number.isSafeInteger(options.pid) || options.pid <= 0) {
+        throw new DapError(`lldb-dap attach PID must be a positive safe integer; received ${String(options.pid)}`);
+    }
+    const program = options.program
+        ? resolveExistingFile(options.program, 'Program image')
+        : undefined;
+    return {
+        type: 'lldb-dap',
+        request: 'attach',
+        name: 'qwen-dap-mcp lldb-dap attach',
+        pid: options.pid,
+        ...(program ? { program } : {}),
+        stopOnEntry: options.stopOnEntry ?? true,
+    };
+}
+export function resolveLldbDapRemoteEndpoint(options) {
+    return buildRemoteTcpEndpoint(options.host, options.port, options.policyEnv);
+}
+/**
+ * lldb-dap only gained native gdb-remote host/port attach fields in newer
+ * releases. Ubuntu 24.04 still ships lldb-dap 18, which ignores those fields
+ * and falls back to process-name attach. Generate one fixed attach command from
+ * the already validated TCP endpoint so old and new adapters work without
+ * exposing user-supplied LLDB command strings.
+ */
+export function buildLldbDapRemoteAttachConfiguration(options) {
+    const endpoint = resolveLldbDapRemoteEndpoint(options);
+    const program = options.program
+        ? resolveExistingFile(options.program, 'Program image')
+        : undefined;
+    return {
+        type: 'lldb-dap',
+        request: 'attach',
+        name: 'qwen-dap-mcp lldb-dap remote attach',
+        ...(program ? { program } : {}),
+        attachCommands: [`gdb-remote ${endpoint.target}`],
+    };
+}
+export function buildLldbDapCoreConfiguration(options) {
+    const coreFile = resolveExistingFile(options.coreFile, 'Crash dump');
+    const program = resolveExistingFile(options.program, 'Program image');
+    return {
+        type: 'lldb-dap',
+        request: 'attach',
+        name: 'qwen-dap-mcp lldb-dap core file',
+        coreFile,
+        program,
+        ...(options.sourceMap ? { sourceMap: Object.entries(options.sourceMap) } : {}),
+    };
+}
+//# sourceMappingURL=lldb-dap.js.map
