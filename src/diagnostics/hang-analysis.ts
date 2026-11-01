@@ -1,4 +1,49 @@
+import type { DebugProtocol } from '@vscode/debugprotocol';
 import { assessProjectFrames, } from './intelligent-diagnosis.js';
+
+export type HangThreadEvidence = {
+    thread: DebugProtocol.Thread;
+    stack: DebugProtocol.StackFrame[];
+    variableFrames: Array<{
+        frameIndex: number;
+        frame: DebugProtocol.StackFrame;
+        variables: DebugProtocol.Variable[];
+        collectionErrors?: string[];
+    }>;
+    collectionErrors?: string[];
+};
+
+export type HangAnalysisOptions = {
+    program?: string;
+    cwd?: string;
+    projectRoots?: string[];
+    projectModules?: string[];
+};
+
+type PointerRole = 'synchronization' | 'owner-or-thread' | 'buffer-or-object' | 'generic-pointer';
+type PointerAddress = { address: string; source: 'memoryReference' | 'value' };
+type PointerObservation = {
+    address: string;
+    source: PointerAddress['source'];
+    threadId: number;
+    threadName: string;
+    frameIndex: number;
+    frameName: string;
+    variableName: string;
+    variableType?: string;
+    variableValue: string;
+    role: PointerRole;
+};
+type WaitAssessment = {
+    kind: string;
+    blocked: boolean;
+    confidence: string;
+    matchedFrameIndex?: number;
+    matchedFunction?: string;
+    rationale: string[];
+};
+type ThreadTriage = { threadId: number; wait: WaitAssessment };
+
 const WAIT_RULES = [
     {
         kind: 'condition-variable',
@@ -72,7 +117,7 @@ const POINTER_TYPE_RE = /(?:\*|\bptr\b|pointer|unique_ptr|shared_ptr|weak_ptr|ha
 const SYNC_RE = /(?:mutex|lock|guard|critical|cond|semaphore|event|futex|rwlock|srw)/i;
 const OWNER_RE = /(?:owner|thread|tid|handle)/i;
 const BUFFER_RE = /(?:buffer|buf|node|object|obj|context|ctx|state|queue|list|map|tree|head|tail|this|self)/i;
-function normalizedHex(value) {
+function normalizedHex(value: string): string | undefined {
     const matched = value.match(/0x[0-9a-f]+/i)?.[0];
     if (!matched)
         return undefined;
@@ -83,7 +128,7 @@ function normalizedHex(value) {
         return matched.toLowerCase();
     }
 }
-function pointerRole(variable) {
+function pointerRole(variable: DebugProtocol.Variable): PointerRole {
     const text = `${variable.name} ${variable.type ?? ''}`;
     if (SYNC_RE.test(text))
         return 'synchronization';
@@ -93,12 +138,12 @@ function pointerRole(variable) {
         return 'buffer-or-object';
     return 'generic-pointer';
 }
-function looksPointerLike(variable) {
+function looksPointerLike(variable: DebugProtocol.Variable): boolean {
     return Boolean(variable.memoryReference)
         || POINTER_NAME_RE.test(variable.name)
         || POINTER_TYPE_RE.test(variable.type ?? '');
 }
-function variableAddress(variable) {
+function variableAddress(variable: DebugProtocol.Variable): PointerAddress | undefined {
     const memoryReference = variable.memoryReference
         ? normalizedHex(variable.memoryReference)
         : undefined;
@@ -109,7 +154,7 @@ function variableAddress(variable) {
     const value = normalizedHex(variable.value);
     return value ? { address: value, source: 'value' } : undefined;
 }
-export function classifyThreadWait(evidence, analysisOptions = {}) {
+export function classifyThreadWait(evidence: HangThreadEvidence, analysisOptions: HangAnalysisOptions = {}): WaitAssessment {
     const inspectedFrames = evidence.stack.slice(0, 12);
     for (const rule of WAIT_RULES) {
         const index = inspectedFrames.findIndex((frame) => rule.re.test(frame.name));
@@ -148,9 +193,9 @@ export function classifyThreadWait(evidence, analysisOptions = {}) {
                 : ['no recognized wait primitive or active top-level project frame was found'],
     };
 }
-function buildPointerProvenance(evidence) {
-    const observations = [];
-    const nullLike = [];
+function buildPointerProvenance(evidence: HangThreadEvidence[]) {
+    const observations: PointerObservation[] = [];
+    const nullLike: PointerObservation[] = [];
     for (const threadEvidence of evidence) {
         for (const variableFrame of threadEvidence.variableFrames) {
             for (const variable of variableFrame.variables) {
@@ -178,7 +223,7 @@ function buildPointerProvenance(evidence) {
             }
         }
     }
-    const byAddress = new Map();
+    const byAddress = new Map<string, PointerObservation[]>();
     for (const observation of observations) {
         const group = byAddress.get(observation.address) ?? [];
         group.push(observation);
@@ -227,7 +272,7 @@ function buildPointerProvenance(evidence) {
         ],
     };
 }
-function buildDeadlockHeuristic(triage, pointerProvenance) {
+function buildDeadlockHeuristic(triage: ThreadTriage[], pointerProvenance: ReturnType<typeof buildPointerProvenance>) {
     const blocked = triage.filter((item) => item.wait.blocked);
     const strongLockBlocked = blocked.filter((item) => STRONG_LOCK_WAITS.has(item.wait.kind));
     const ioBlocked = blocked.filter((item) => item.wait.kind === 'io');
@@ -302,7 +347,7 @@ function buildDeadlockHeuristic(triage, pointerProvenance) {
         ],
     };
 }
-export function analyzeHang(evidence, analysisOptions = {}) {
+export function analyzeHang(evidence: HangThreadEvidence[], analysisOptions: HangAnalysisOptions = {}) {
     const allThreadTriage = evidence.map((item) => {
         const project = assessProjectFrames(item.stack, analysisOptions)
             .find((assessment) => assessment.projectControlled);

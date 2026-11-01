@@ -1,6 +1,9 @@
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import * as z from 'zod/v4';
+import type { McpServer } from '@modelcontextprotocol/server';
+import type { DebugProtocol } from '@vscode/debugprotocol';
+import type { GuardedDapSession } from '../dap/guarded-session.js';
 import { discoverCodeLldb } from '../adapters/codelldb.js';
 import { buildGdbDapRemoteAttachConfiguration, discoverGdbDap, } from '../adapters/gdb-dap.js';
 import { discoverLldbDap } from '../adapters/lldb-dap.js';
@@ -17,8 +20,9 @@ import { debugAdapterDoctorOutputSchema, debugAdaptiveEvidenceOutputSchema, debu
 import { openDump } from './register-dump-tools.js';
 import { findObservedValue, traceValue } from './value-tracing.js';
 import { DEBUG_SESSION_CONTROL_ANNOTATIONS, LOCAL_TARGET_EXECUTION_ANNOTATIONS, READ_ONLY_LOCAL_TOOL_ANNOTATIONS, } from './tool-annotations.js';
-const RR_REPLAY_BY_CONNECTION = new WeakMap();
-function replayManagerFor(session) {
+type DapEventRecord = { event: string; body?: { output?: unknown } };
+const RR_REPLAY_BY_CONNECTION = new WeakMap<GuardedDapSession['connection'], ManagedRrReplay>();
+function replayManagerFor(session: GuardedDapSession): ManagedRrReplay {
     const key = session.connection;
     let manager = RR_REPLAY_BY_CONNECTION.get(key);
     if (!manager) {
@@ -33,12 +37,12 @@ const LOCAL_ARTIFACT_WRITE_ANNOTATIONS = {
     idempotentHint: false,
     openWorldHint: false,
 };
-function errorResult(error) {
+function errorResult(error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    return { content: [{ type: 'text', text: message }], isError: true };
+    return { content: [{ type: 'text' as const, text: message }], isError: true };
 }
-function debuggerOutput(session) {
-    const status = session.snapshot();
+function debuggerOutput(session: GuardedDapSession): string[] {
+    const status: { recentEvents: DapEventRecord[]; recentAdapterStderr: string[] } = session.snapshot();
     const dap = status.recentEvents
         .filter((record) => record.event === 'output')
         .map((record) => {
@@ -48,7 +52,7 @@ function debuggerOutput(session) {
         .filter(Boolean);
     return [...status.recentAdapterStderr.slice(-50), ...dap.slice(-50)].slice(-100);
 }
-function parsePointer(value) {
+function parsePointer(value: string): bigint | undefined {
     const match = value.replace(/\`/g, '').match(/0x([0-9a-f]+)/i);
     if (!match)
         return undefined;
@@ -59,16 +63,16 @@ function parsePointer(value) {
         return undefined;
     }
 }
-function pointerSize(snapshot) {
+function pointerSize(snapshot: { registers: Array<{ name: string }> }): number {
     const names = new Set(snapshot.registers.map((register) => register.name.toLowerCase()));
     return names.has('eip') && !names.has('rip') ? 4 : 8;
 }
-function decodeMemory(data) {
+function decodeMemory(data: string | undefined): Buffer {
     if (!data)
         return Buffer.alloc(0);
     return Buffer.from(data.replace(/\s+/g, ''), 'base64');
 }
-async function reverseLifetime(session, name, steps) {
+async function reverseLifetime(session: GuardedDapSession, name: string, steps: number) {
     const events = [];
     let current = await session.runtimeSnapshot({ stackLevels: 10, maxVariablesPerScope: 80, includeDisassembly: false, includeModules: false, includeExceptionInfo: true });
     let prior = findObservedValue(current, name);
@@ -89,7 +93,14 @@ async function reverseLifetime(session, name, steps) {
     }
     return events;
 }
-async function captureTimeline(session, options) {
+type TimelineCaptureOptions = {
+    samples: number;
+    maxThreads: number;
+    stackLevels: number;
+    maxVariables: number;
+    intervalMs: number;
+};
+async function captureTimeline(session: GuardedDapSession, options: TimelineCaptureOptions) {
     if (session.isPostmortem())
         throw new DapError('Thread timeline sampling requires a live target.');
     return session.runExclusiveLifecycle('thread timeline', async () => {
@@ -98,8 +109,8 @@ async function captureTimeline(session, options) {
         for (let sample = 1; sample <= options.samples; sample += 1) {
             const threads = (await session.threads()).slice(0, options.maxThreads);
             for (const thread of threads) {
-                let stack = [];
-                let variables = [];
+                let stack: DebugProtocol.StackFrame[] = [];
+                let variables: DebugProtocol.Variable[] = [];
                 try {
                     stack = await session.stackTrace(thread.id, 0, options.stackLevels);
                     const frame = stack[0];
@@ -127,7 +138,7 @@ async function captureTimeline(session, options) {
             const eventCountBeforeResume = session.snapshot().recentEvents.length;
             await session.continueExecution(resumeThread.id, false, Math.max(5000, options.intervalMs * 4));
             await new Promise((resolve) => setTimeout(resolve, options.intervalMs));
-            const eventsAfterResume = session.snapshot().recentEvents.slice(eventCountBeforeResume);
+            const eventsAfterResume: DapEventRecord[] = session.snapshot().recentEvents.slice(eventCountBeforeResume);
             const terminal = [...eventsAfterResume].reverse().find((record) => {
                 const event = record.event;
                 return event === 'exited' || event === 'terminated';
@@ -144,7 +155,7 @@ async function captureTimeline(session, options) {
                 await session.pause(resumeThread.id, true, Math.max(5000, options.intervalMs * 4));
             }
             catch (error) {
-                const recent = session.snapshot().recentEvents.slice(eventCountBeforeResume);
+                const recent: DapEventRecord[] = session.snapshot().recentEvents.slice(eventCountBeforeResume);
                 const lateTerminal = [...recent].reverse().find((record) => {
                     const event = record.event;
                     return event === 'exited' || event === 'terminated';
@@ -161,7 +172,7 @@ async function captureTimeline(session, options) {
             }
         }
         const lockGraph = buildLockOwnerGraph(observations);
-        const byThread = new Map();
+        const byThread = new Map<number, Array<(typeof observations)[number]>>();
         for (const observation of observations) {
             const bucket = byThread.get(observation.threadId) ?? [];
             bucket.push(observation);
@@ -183,7 +194,7 @@ async function captureTimeline(session, options) {
         };
     });
 }
-function installedAdapter(name, fn) {
+function installedAdapter(name: string, fn: () => unknown) {
     try {
         return { name, available: true, details: fn() };
     }
@@ -191,7 +202,7 @@ function installedAdapter(name, fn) {
         return { name, available: false, error: error instanceof Error ? error.message : String(error) };
     }
 }
-export function registerRuntimeV2Tools(server, session) {
+export function registerRuntimeV2Tools(server: McpServer, session: GuardedDapSession): void {
     server.registerTool('debug_time_travel', {
         title: 'Record and Time-Travel Debugging',
         description: 'Coordinate bounded record/replay debugging with rr and DAP reverse execution. Use doctor to inspect rr availability, record to execute one explicitly supplied program under rr, replay-plan to generate a loopback-only rr/GDB handoff, or reverse to move an already record/replay-capable DAP target backward. Do not use record on untrusted targets outside an isolation boundary or assume ordinary debuggers support reverse execution.',
