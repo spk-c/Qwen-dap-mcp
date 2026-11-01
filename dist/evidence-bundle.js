@@ -1,4 +1,4 @@
-import { existsSync, linkSync, lstatSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { closeSync, constants, existsSync, fstatSync, linkSync, lstatSync, openSync, readSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { basename, dirname, join, resolve } from 'node:path';
 import { DapError } from './dap/errors.js';
@@ -148,26 +148,59 @@ export function exportEvidenceBundle(options) {
 }
 export function importEvidenceBundle(pathInput) {
     const path = resolveExistingFile(pathInput, 'Evidence bundle');
-    const stat = lstatSync(path);
-    if (!stat.isFile() || stat.isSymbolicLink())
-        throw new DapError('Evidence import requires a regular file, not a symlink.');
-    if (stat.size > MAX_EVIDENCE_FILE_BYTES) {
-        throw new DapError('Evidence bundle is ' + stat.size + ' bytes; maximum is ' + MAX_EVIDENCE_FILE_BYTES + ' bytes.');
+    const lowered = path.toLowerCase();
+    const isSarif = lowered.endsWith('.qwen-dap.sarif') || lowered.endsWith('.qwen-dap.sarif.json');
+    if (!lowered.endsWith('.qwen-dap.json') && !isSarif) {
+        throw new DapError('Evidence import is restricted to .qwen-dap.json, .qwen-dap.sarif or .qwen-dap.sarif.json files.');
     }
-    const content = readFileSync(path, 'utf8');
+    const initial = lstatSync(path);
+    if (!initial.isFile() || initial.isSymbolicLink())
+        throw new DapError('Evidence import requires a regular file, not a symlink.');
+    if (initial.size > MAX_EVIDENCE_FILE_BYTES)
+        throw new DapError('Evidence bundle exceeds the 8 MiB safety limit.');
+
+    // Open the file once, without following a final symlink on platforms that
+    // support O_NOFOLLOW. fstat confirms we did not race the initial path check.
+    const fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+    let content;
+    let bytes;
+    try {
+        const stat = fstatSync(fd);
+        if (!stat.isFile() || stat.ino !== initial.ino || stat.dev !== initial.dev)
+            throw new DapError('Evidence file identity changed while opening; refusing import.');
+        const buffer = Buffer.allocUnsafe(MAX_EVIDENCE_FILE_BYTES + 1);
+        let offset = 0;
+        while (offset < buffer.length) {
+            const count = readSync(fd, buffer, offset, buffer.length - offset, null);
+            if (count === 0)
+                break;
+            offset += count;
+        }
+        if (offset > MAX_EVIDENCE_FILE_BYTES)
+            throw new DapError('Evidence import exceeded the 8 MiB read limit.');
+        bytes = offset;
+        content = buffer.toString('utf8', 0, offset);
+    }
+    finally {
+        closeSync(fd);
+    }
     let evidence;
     try {
         evidence = JSON.parse(content);
     }
     catch (cause) {
-        throw new DapError('Evidence import accepts structured JSON/SARIF files only. Markdown exports are presentation artifacts, not replay inputs.', {
+        throw new DapError('Evidence import requires valid structured JSON/SARIF; Markdown is not an import format.', {
             cause: cause instanceof Error ? cause : undefined,
         });
     }
+    if (evidence === null || typeof evidence !== 'object' || Array.isArray(evidence))
+        throw new DapError('Evidence import requires a structured JSON object.');
+    if (isSarif && (evidence.version !== '2.1.0' || !Array.isArray(evidence.runs)))
+        throw new DapError('SARIF evidence import requires a SARIF 2.1.0 object with runs.');
     return {
         action: 'import',
         path,
-        bytes: stat.size,
+        bytes,
         evidence,
         offline: true,
         note: 'Imported evidence is read-only offline context; it cannot resume or mutate the original debug target.',
