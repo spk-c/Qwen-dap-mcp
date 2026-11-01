@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import type { DebugProtocol } from '@vscode/debugprotocol';
 import { resolveExistingDirectory } from '../local-path.js';
@@ -6,6 +6,7 @@ import { logger } from '../logger.js';
 import { DapError, DapRequestError, DapTimeoutError } from './errors.js';
 import { currentDapOperationContext } from './operation-context.js';
 import { createDapRequestPolicy, resolveDapPolicyMode, } from './request-policy.js';
+import type { DapRequestContext } from './request-policy.js';
 const HEADER_SEPARATOR = Buffer.from('\r\n\r\n');
 const MAX_EVENT_HISTORY = 200;
 const MAX_HEADER_BYTES = 64 * 1024;
@@ -13,18 +14,30 @@ const MAX_DAP_PAYLOAD_BYTES = 16 * 1024 * 1024;
 const MAX_STDERR_LINE_CHARS = 4096;
 const TERMINATE_GRACE_MS = 1_000;
 const KILL_GRACE_MS = 2_000;
-function childHasExited(child) {
+type DapPolicyResult = { allow: boolean; reason?: string };
+type DapRequestPolicy = (request: DapRequestContext) => DapPolicyResult | Promise<DapPolicyResult>;
+type PendingDapRequest = {
+    command: string;
+    generation: number;
+    resolve: (response: DebugProtocol.Response) => void;
+    reject: (error: unknown) => void;
+    timer: ReturnType<typeof setTimeout>;
+    cleanup: () => void;
+};
+type HistoryEvent = { receivedAt: string; event: string; body?: DebugProtocol.Event['body'] };
+type ReverseHistory = { receivedAt: string; command: string; arguments?: DebugProtocol.Request['arguments'] };
+function childHasExited(child: ChildProcessWithoutNullStreams): boolean {
     return child.exitCode !== null || child.signalCode !== null;
 }
-function isPromiseLike(value) {
-    return typeof value.then === 'function';
+function isPromiseLike<T>(value: T | PromiseLike<T>): value is PromiseLike<T> {
+    return value !== null && value !== undefined && typeof (value as PromiseLike<T>).then === 'function';
 }
-function waitForChildExit(child, timeoutMs) {
+function waitForChildExit(child: ChildProcessWithoutNullStreams, timeoutMs: number): Promise<boolean> {
     if (childHasExited(child))
         return Promise.resolve(true);
     return new Promise((resolve) => {
         let settled = false;
-        const finish = (exited) => {
+        const finish = (exited: boolean) => {
             if (settled)
                 return;
             settled = true;
@@ -38,17 +51,17 @@ function waitForChildExit(child, timeoutMs) {
     });
 }
 export class DapConnection extends EventEmitter {
-    child;
+    child?: ChildProcessWithoutNullStreams;
     buffer = Buffer.alloc(0);
     nextSeq = 1;
     transportGeneration = 0;
-    pending = new Map();
-    eventHistory = [];
-    reverseRequestHistory = [];
-    stderrLines = [];
-    requestPolicy;
+    pending = new Map<number, PendingDapRequest>();
+    eventHistory: HistoryEvent[] = [];
+    reverseRequestHistory: ReverseHistory[] = [];
+    stderrLines: string[] = [];
+    requestPolicy: DapRequestPolicy;
     constructor(options: {
-        requestPolicy?: (request: {command: string; args?: unknown}) => {allow: boolean; reason?: string} | Promise<{allow: boolean; reason?: string}>;
+        requestPolicy?: DapRequestPolicy;
         policyMode?: string;
     } = {}) {
         super();
@@ -56,7 +69,7 @@ export class DapConnection extends EventEmitter {
             ?? createDapRequestPolicy(options.policyMode ?? resolveDapPolicyMode());
     }
     /** Replace the transport policy used for future outgoing DAP requests. */
-    setRequestPolicy(policy) {
+    setRequestPolicy(policy: DapRequestPolicy): void {
         this.requestPolicy = policy;
     }
     get isRunning() {
@@ -77,7 +90,7 @@ export class DapConnection extends EventEmitter {
     get recentStderr() {
         return this.stderrLines;
     }
-    async start(options) {
+    async start(options: { command: string; args?: string[]; cwd?: string; env?: NodeJS.ProcessEnv }): Promise<void> {
         if (this.isRunning) {
             throw new DapError('A DAP adapter is already running');
         }
@@ -153,7 +166,7 @@ export class DapConnection extends EventEmitter {
                 });
                 resolve();
             };
-            const onError = (error) => {
+            const onError = (error: Error) => {
                 cleanup();
                 if (this.child === child)
                     this.child = undefined;
@@ -192,7 +205,7 @@ export class DapConnection extends EventEmitter {
             this.emit('adapterExit', { code: child.exitCode, signal: child.signalCode, forcedStop: true });
         }
     }
-    async sendRequest(command, args, timeoutMs = 15_000) {
+    async sendRequest(command: string, args?: unknown, timeoutMs: number = 15_000): Promise<DebugProtocol.Response> {
         const authorizedChild = this.child;
         const authorizedGeneration = this.transportGeneration;
         const operation = currentDapOperationContext();
@@ -229,13 +242,13 @@ export class DapConnection extends EventEmitter {
             ...(args === undefined ? {} : { arguments: args }),
         };
         return new Promise<DebugProtocol.Response>((resolve, reject) => {
-            let abortHandler;
+            let abortHandler: (() => void) | undefined;
             const cleanup = () => {
                 clearTimeout(timer);
                 if (abortHandler && operation)
                     operation.signal.removeEventListener('abort', abortHandler);
             };
-            const rejectPending = (error) => {
+            const rejectPending = (error: unknown) => {
                 const pending = this.pending.get(seq);
                 if (!pending || pending.generation !== generation)
                     return;
@@ -265,13 +278,19 @@ export class DapConnection extends EventEmitter {
             }
         });
     }
-    waitForEvent(eventName, timeoutMs = 15_000, predicate, includeRecent = false, signal) {
+    waitForEvent(
+        eventName: string,
+        timeoutMs: number = 15_000,
+        predicate?: (event: DebugProtocol.Event) => boolean,
+        includeRecent = false,
+        signal?: AbortSignal
+    ): Promise<DebugProtocol.Event> {
         const operation = currentDapOperationContext();
         operation?.throwIfAborted();
         const effectiveTimeoutMs = operation?.remainingMs(timeoutMs) ?? timeoutMs;
         return new Promise<DebugProtocol.Event>((resolve, reject) => {
             const eventKey = `event:${eventName}`;
-            const handler = (event) => {
+            const handler = (event: DebugProtocol.Event) => {
                 if (predicate && !predicate(event))
                     return;
                 cleanup();
@@ -281,7 +300,7 @@ export class DapConnection extends EventEmitter {
                 cleanup();
                 reject(new DapError(`DAP adapter exited while waiting for event '${eventName}'`));
             };
-            const onAdapterError = (error) => {
+            const onAdapterError = (error: unknown) => {
                 cleanup();
                 reject(error instanceof Error
                     ? error
@@ -335,7 +354,7 @@ export class DapConnection extends EventEmitter {
             }
         });
     }
-    writeMessage(message) {
+    writeMessage(message: object): void {
         const child = this.child;
         if (!child || !this.isRunning) {
             throw new DapError('DAP adapter is not running');
@@ -348,7 +367,7 @@ export class DapConnection extends EventEmitter {
         const header = Buffer.from(`Content-Length: ${payload.length}\r\n\r\n`, 'ascii');
         child.stdin.write(Buffer.concat([header, payload]));
     }
-    onStdout(chunk) {
+    onStdout(chunk: Buffer): void {
         // Process bounded slices instead of buffering an entire stdout burst.
         for (let offset = 0; offset < chunk.length; offset += 64 * 1024) {
             const piece = chunk.subarray(offset, offset + 64 * 1024);
@@ -507,7 +526,7 @@ export class DapConnection extends EventEmitter {
         };
         this.writeMessage(response);
     }
-    captureStderr(chunk) {
+    captureStderr(chunk: string): void {
         const lines = chunk.split(/\r?\n/).filter(Boolean).slice(-100)
             .map((line) => line.length > MAX_STDERR_LINE_CHARS
                 ? line.slice(0, MAX_STDERR_LINE_CHARS) + '… [truncated]' : line);
@@ -518,7 +537,7 @@ export class DapConnection extends EventEmitter {
         logger.debug('DAP adapter wrote to stderr', { lineCount: lines.length });
         this.emit('adapterStderr', chunk);
     }
-    failProtocol(error) {
+    failProtocol(error: Error): void {
         this.buffer = Buffer.alloc(0);
         this.transportGeneration += 1;
         logger.warn('Fatal DAP protocol error; retiring adapter transport', { error });
@@ -534,7 +553,7 @@ export class DapConnection extends EventEmitter {
             this.child = undefined;
         }
     }
-    rejectAll(error) {
+    rejectAll(error: Error): void {
         for (const pending of this.pending.values()) {
             pending.cleanup();
             pending.reject(error);
