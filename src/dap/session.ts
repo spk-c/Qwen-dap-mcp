@@ -1,4 +1,5 @@
 import { DapConnection } from './connection.js';
+import type { DebugProtocol } from '@vscode/debugprotocol';
 import { DapError, DapRequestError, DapTimeoutError } from './errors.js';
 import { assessSymbolHealth } from './symbol-health.js';
 export type RuntimeSnapshotOptions = {
@@ -580,7 +581,7 @@ export class DapSession {
         };
         const onAdapterExit = () => finish(undefined, new DapError("DAP adapter exited while waiting for event 'stopped'"));
         const onAdapterError = (error) => finish(undefined, error instanceof Error ? error : new DapError("DAP adapter failed while waiting for event 'stopped'"));
-        const promise = new Promise((resolve, reject) => {
+        const promise = new Promise<DebugProtocol.Event>((resolve, reject) => {
             resolvePromise = resolve;
             rejectPromise = reject;
             timer = setTimeout(() => finish(undefined, new DapTimeoutError("DAP event 'stopped'", timeoutMs)), timeoutMs);
