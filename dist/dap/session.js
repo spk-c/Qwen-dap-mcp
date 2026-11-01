@@ -451,21 +451,39 @@ export class DapSession {
         this.configured = false;
         this.activeRequest = request;
         const debugRequestTimeoutMs = Math.max(this.requestTimeoutMs, 60_000);
-        // GNU GDB 15+ follows the corrected DAP ordering implemented upstream:
-        // initialize -> configuration requests -> configurationDone -> launch.
-        // Source breakpoints are intentionally allowed to be pending before GDB
-        // knows the executable. CodeLLDB/lldb-dap retain the traditional path
-        // below where launch/attach starts first and initialized gates config.
+        // GDB DAP versions differ in ordering: GDB 15 accepts
+        // configurationDone before launch/attach, whereas newer GDB defers
+        // launch/attach until configurationDone and rejects the early request.
+        // Detect only that explicit protocol error; do not hide other failures.
+        // Source breakpoints may be pending before GDB knows the executable.
         if (this.adapterId === 'gdb') {
             try {
                 const breakpointResults = [];
                 for (const group of breakpoints) {
                     breakpointResults.push({ source: group.source, breakpoints: await this.setBreakpoints(group.source, group.lines) });
                 }
+                let deferredLaunch = false;
                 if (this.capabilities?.supportsConfigurationDoneRequest) {
-                    await this.sendStateChangingRequest('configurationDone', {});
+                    try {
+                        await this.sendStateChangingRequest('configurationDone', {});
+                    }
+                    catch (error) {
+                        if (!/launch or attach not specified/i.test(error instanceof Error ? error.message : String(error))) {
+                            throw error;
+                        }
+                        deferredLaunch = true;
+                    }
                 }
-                const response = await this.sendStateChangingRequest(request, configuration, debugRequestTimeoutMs);
+                let response;
+                if (deferredLaunch) {
+                    const pending = this.sendStateChangingRequest(request, configuration, debugRequestTimeoutMs);
+                    void pending.catch(() => undefined);
+                    await this.sendStateChangingRequest('configurationDone', {});
+                    response = await pending;
+                }
+                else {
+                    response = await this.sendStateChangingRequest(request, configuration, debugRequestTimeoutMs);
+                }
                 this.configured = true;
                 this.stateUncertain = false;
                 return { request, response: response.body ?? {}, breakpoints: breakpointResults, capabilities: this.capabilities ?? {} };
