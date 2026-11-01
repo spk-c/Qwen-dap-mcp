@@ -1,6 +1,6 @@
 {
-  "name": "@slp-dev1/qwen-dap-mcp",
-  "version": "0.18.2",
+  "name": "qwen-dap-mcp-spk-c",
+  "version": "0.19.0",
   "description": "Agentic native debugging via DAP→MCP: crashes, hangs, dumps, causal/lifetime tracing, symbols, record/replay, crash families, and evidence-driven verification.",
   "type": "module",
   "main": "./dist/index.js",
@@ -22,9 +22,10 @@
     "test": "node --test",
     "check:package": "node scripts/check-package.mjs",
     "package:extension": "npm run check:package",
-    "check": "npm run build && npm test && npm run check:package",
+    "check": "npm run build && npm test && npm run check:docs && npm run check:package",
     "prepublishOnly": "npm run check",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "check:docs": "node scripts/check-docs.mjs"
   },
   "engines": {
     "node": ">=20"
@@ -79,5 +80,10 @@
     "@modelcontextprotocol/server": "^2.0.0",
     "@vscode/debugprotocol": "^1.68.0",
     "zod": "^4.5.4"
+  },
+  "private": true,
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "@types/node": "^22.18.0"
   }
 }

@@ -17,3 +17,7 @@ coverage/
 
 integration/bin/
 *.pdb
+
+# Regenerated during build; never commit stale upstream compiler outputs
+dist/**/*.d.ts
+dist/**/*.js.map

@@ -19,3 +19,12 @@ Legacy .d.ts declarations and .js.map source maps originate from the compiled up
 2026-11-01 native debugger integration:
 - Added a compiled C++ fixture and real GDB, LLDB-DAP and CodeLLDB CI jobs.
 - Tests cover source breakpoints, native stack/scopes, optional memory reads, a clean exit, a deliberate crash and adapter cleanup.
+
+## 0.19.0 stabilization
+
+- Added the nine documents referenced by the README and a link-integrity check.
+- Replaced imported stale TypeScript declarations and source maps with generated declarations from editable JavaScript; original TypeScript sources are still unavailable.
+- Added real MCP stdio handshake/session tests and inspect-only/HOL Guard negative tests.
+- Added dependency-update and CodeQL workflows.
+- The fork now uses a distinct private package name to avoid publishing to the upstream npm scope. This does not imply an npm release.
+- Native postmortem/remote E2E tests and package locking must be completed before tagging a release.
