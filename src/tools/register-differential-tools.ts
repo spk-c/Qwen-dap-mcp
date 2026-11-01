@@ -1,3 +1,5 @@
+import type { McpServer } from '@modelcontextprotocol/server';
+import type { DapSessionRegistry } from '../dap/session-registry.js';
 import * as z from 'zod/v4';
 import { compareRuntimeSnapshots } from '../diagnostics/runtime-diff.js';
 import { DapError } from '../dap/errors.js';
@@ -46,7 +48,7 @@ async function captureSessionSnapshot(sessions, sessionId, options) {
         };
     });
 }
-export function registerDifferentialTools(server, sessions) {
+export function registerDifferentialTools(server: McpServer, sessions: DapSessionRegistry) {
     server.registerTool('debug_compare_runs', {
         description: 'Compare bounded runtime evidence from two existing stopped DAP sessions. Use this for baseline or known-good versus candidate or failing differential debugging after both sessions have reached comparable stops. It compares stack identities, locals, registers, exception state, symbol health, and modules semantically; non-null raw address-only changes are marked unstable rather than causal evidence. Do not use it to launch, resume, or alter either target; prepare both runtime states with the normal lifecycle tools first.',
         inputSchema: z.object({
