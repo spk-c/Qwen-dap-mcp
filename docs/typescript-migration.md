@@ -8,8 +8,10 @@ All **51** runtime modules now have a corresponding `src/**/*.ts` file. Run `npm
 
 This is a behavior-preserving source-language migration based on the **current 0.19.0 JavaScript** code. Old 0.12.0 implementations must not replace newer debugger safety fixes.
 
-## Static typing debt
+## Static typing status
 
-The initial conversion checks **37 modules** with TypeScript, while **14 modules** temporarily use `// @ts-nocheck` because original API interfaces were lost during npm compilation. These markers are stripped from emitted JavaScript. The project is TypeScript-built, **not yet fully statically type-safe**. Restore interfaces incrementally from the older source reference, remove the opt-outs, then enable strict mode after the full tree passes.
+The initial migration left 14 modules under `// @ts-nocheck`. The follow-up now gives all **51 runtime modules compiler coverage**, with no `@ts-nocheck` opt-outs. `npm run check:types` enforces that coverage in CI.
 
-All live debugger, postmortem, remote and MCP integration checks remain required before merging or publishing.
+The DAP transport uses the published `@vscode/debugprotocol` response/event interfaces. Its `body` is intentionally dynamic at the protocol boundary, while operation deadlines, request-local session ownership, HOL Guard configuration, rr options, hang observations, runtime snapshot bounds and report structures now have explicit types.
+
+**Full strict TypeScript checking is a separate goal.** The current `tsconfig.json` still has `strict: false`; no one should confuse removal of opt-outs with complete elimination of implicit `any` or with a passing `strict: true` compile. Strengthen remaining API surfaces, turn on strict flags only after compiler errors are fixed, and keep all real debugger/MCP integration checks as release gates.
