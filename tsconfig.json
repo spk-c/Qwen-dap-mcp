@@ -14,7 +14,11 @@
     "outDir": "dist",
     "rootDir": "src",
     "forceConsistentCasingInFileNames": true,
-    "allowJs": false
+    "allowJs": false,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "alwaysStrict": true,
+    "useUnknownInCatchVariables": true
   },
   "include": [
     "src/**/*.ts"
