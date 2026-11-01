@@ -4,8 +4,25 @@ import { spawnSync } from 'node:child_process';
 import { DapError } from '../dap/errors.js';
 import { resolveExistingDirectory, resolveExistingFile } from '../local-path.js';
 import { buildRemoteTcpEndpoint, parseRemoteTcpTarget, } from '../remote-endpoint.js';
+export interface GdbDapLaunchOptions {
+    program: string;
+    cwd?: string;
+    args?: string[];
+    env?: NodeJS.ProcessEnv;
+    stopOnEntry?: boolean;
+    stopAtBeginningOfMainSubprogram?: boolean;
+}
+export interface GdbDapPidAttachOptions { pid: number; program?: string }
+export interface GdbDapRemoteOptions {
+    target?: string;
+    host?: string;
+    port?: number;
+    program?: string;
+    policyEnv?: NodeJS.ProcessEnv;
+}
+export interface GdbDapCoreOptions { coreFile: string; program?: string }
 export const MIN_GDB_DAP_MAJOR = 14;
-function isFile(path) {
+function isFile(path: string): boolean {
     try {
         return statSync(path).isFile();
     }
@@ -13,12 +30,12 @@ function isFile(path) {
         return false;
     }
 }
-function executableNames() {
+function executableNames(): string[] {
     if (process.platform === 'win32')
         return ['gdb.exe'];
     return ['gdb', 'gdb-19', 'gdb-18', 'gdb-17', 'gdb-16', 'gdb-15', 'gdb-14'];
 }
-function findOnPath(command) {
+function findOnPath(command: string): string | undefined {
     const locator = process.platform === 'win32' ? 'where.exe' : 'which';
     const result = spawnSync(locator, [command], {
         encoding: 'utf8',
@@ -32,7 +49,7 @@ function findOnPath(command) {
     const first = result.stdout.split(/\r?\n/).map((line) => line.trim()).find(Boolean);
     return first && isFile(first) ? first : undefined;
 }
-export function parseGdbVersion(output) {
+export function parseGdbVersion(output: string) {
     const firstLine = output.split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? '';
     const match = firstLine.match(/\b(?:GNU\s+)?gdb(?:\s+\([^)]*\))?\s+(\d+)(?:\.(\d+))?/i)
         ?? output.match(/\bgdb[^\d]*(\d+)(?:\.(\d+))?/i);
@@ -44,7 +61,7 @@ export function parseGdbVersion(output) {
         raw: firstLine || match[0],
     };
 }
-function probeGdbVersion(command) {
+function probeGdbVersion(command: string) {
     const result = spawnSync(command, ['--version'], {
         encoding: 'utf8',
         windowsHide: true,
@@ -63,7 +80,7 @@ function probeGdbVersion(command) {
     }
     return version;
 }
-function resultFor(command, source, searched) {
+function resultFor(command: string, source: string, searched: string[]) {
     return {
         command,
         args: ['--interpreter=dap', '--quiet', '--nx'],
@@ -75,7 +92,7 @@ function resultFor(command, source, searched) {
 export type GdbDapDiscoveryOptions = { env?: NodeJS.ProcessEnv; explicitPath?: string; allowPathFallback?: boolean };
 export function discoverGdbDap(options: GdbDapDiscoveryOptions = {}) {
     const env = options.env ?? process.env;
-    const searched = [];
+    const searched: string[] = [];
     if (options.explicitPath) {
         const candidate = resolveExistingFile(options.explicitPath, 'GDB executable');
         searched.push(candidate);
@@ -106,7 +123,7 @@ export function discoverGdbDap(options: GdbDapDiscoveryOptions = {}) {
     }
     throw new DapError(`GDB with DAP support was not found. Install GDB ${MIN_GDB_DAP_MAJOR}+, set GDB_PATH/GDB_DAP_PATH/GDB_HOME, or pass adapterPath. Searched: ${searched.join(', ')}`);
 }
-export function buildGdbDapLaunchConfiguration(options) {
+export function buildGdbDapLaunchConfiguration(options: GdbDapLaunchOptions) {
     const program = resolveExistingFile(options.program, 'Program executable');
     const cwd = options.cwd
         ? resolveExistingDirectory(options.cwd, 'Working directory')
@@ -122,7 +139,7 @@ export function buildGdbDapLaunchConfiguration(options) {
             : { stopAtBeginningOfMainSubprogram: options.stopAtBeginningOfMainSubprogram }),
     };
 }
-export function buildGdbDapPidAttachConfiguration(options) {
+export function buildGdbDapPidAttachConfiguration(options: GdbDapPidAttachOptions) {
     if (!Number.isSafeInteger(options.pid) || options.pid <= 0) {
         throw new DapError(`GDB attach PID must be a positive safe integer; received ${String(options.pid)}`);
     }
@@ -131,7 +148,7 @@ export function buildGdbDapPidAttachConfiguration(options) {
         ...(options.program ? { program: resolveExistingFile(options.program, 'Program image') } : {}),
     };
 }
-export function resolveGdbDapRemoteEndpoint(options) {
+export function resolveGdbDapRemoteEndpoint(options: GdbDapRemoteOptions) {
     const hasTarget = typeof options.target === 'string' && options.target.trim().length > 0;
     const hasHost = typeof options.host === 'string' && options.host.trim().length > 0;
     const hasPort = options.port !== undefined;
@@ -139,20 +156,20 @@ export function resolveGdbDapRemoteEndpoint(options) {
         throw new DapError('Specify either target or host+port for GDB remote attach, not both forms.');
     }
     if (hasTarget)
-        return parseRemoteTcpTarget(options.target, options.policyEnv);
+        return parseRemoteTcpTarget(options.target as string, options.policyEnv);
     if (!hasHost || !hasPort) {
         throw new DapError('GDB remote attach requires host and port (or the backward-compatible TCP target form).');
     }
-    return buildRemoteTcpEndpoint(options.host, options.port, options.policyEnv);
+    return buildRemoteTcpEndpoint(options.host as string, options.port as number, options.policyEnv);
 }
-export function buildGdbDapRemoteAttachConfiguration(options) {
+export function buildGdbDapRemoteAttachConfiguration(options: GdbDapRemoteOptions) {
     const endpoint = resolveGdbDapRemoteEndpoint(options);
     return {
         target: endpoint.target,
         ...(options.program ? { program: resolveExistingFile(options.program, 'Program image') } : {}),
     };
 }
-export function buildGdbDapCoreConfiguration(options) {
+export function buildGdbDapCoreConfiguration(options: GdbDapCoreOptions) {
     return {
         coreFile: resolveExistingFile(options.coreFile, 'Crash dump'),
         ...(options.program ? { program: resolveExistingFile(options.program, 'Program image') } : {}),
