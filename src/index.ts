@@ -26,7 +26,7 @@ else {
         },
     });
     let closing = false;
-    const close = (signal) => {
+    const close = (signal: 'SIGINT' | 'SIGTERM') => {
         if (closing)
             return;
         closing = true;
