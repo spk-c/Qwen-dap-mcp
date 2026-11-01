@@ -1,3 +1,57 @@
+import type { DebugProtocol } from '@vscode/debugprotocol';
+import type { RuntimeSnapshot } from '../dap/session.js';
+export type DiagnosisConfidence = 'high' | 'medium' | 'low';
+export type DiagnosisCategory =
+    | 'access-violation' | 'segmentation-fault' | 'stack-overflow'
+    | 'divide-by-zero' | 'illegal-instruction' | 'abort-or-assert'
+    | 'heap-corruption' | 'exception' | 'signal' | 'breakpoint'
+    | 'entry' | 'manual-stop' | 'step' | 'unknown';
+export type SuspiciousValue = {
+    scope: 'local' | 'register';
+    name: string;
+    value: string;
+    type?: string;
+    reason: 'null-like-pointer' | 'poison-pattern';
+};
+export type SourceDisassemblyCorrelation = {
+    frame: { name: string; moduleId?: number | string };
+    source?: { name?: string; path?: string; line: number; column: number };
+    instructionPointerReference?: string;
+    exactInstructionMatch: boolean;
+    currentInstruction?: DebugProtocol.DisassembledInstruction;
+    previousInstructions: DebugProtocol.DisassembledInstruction[];
+    nextInstructions: DebugProtocol.DisassembledInstruction[];
+};
+export type DiagnosisHypothesis = {
+    kind: string;
+    title: string;
+    confidence: DiagnosisConfidence;
+    evidence: string[];
+    suggestedChecks: string[];
+};
+export type CrashDiagnosis = {
+    summary: string;
+    classification: {
+        category: DiagnosisCategory;
+        crashLikely: boolean;
+        confidence: DiagnosisConfidence;
+    };
+    stopReason?: string;
+    exception?: DebugProtocol.ExceptionInfoResponse['body'];
+    faultLocation: {
+        function: string;
+        moduleId?: number | string;
+        sourcePath?: string;
+        sourceName?: string;
+        line: number;
+        column: number;
+        instructionPointerReference?: string;
+    };
+    sourceDisassembly: SourceDisassemblyCorrelation;
+    suspiciousValues: SuspiciousValue[];
+    hypotheses: DiagnosisHypothesis[];
+    nextActions: string[];
+};
 const POISON_PATTERNS = [
     '0xcccccccc',
     '0xcdcdcdcd',
@@ -7,7 +61,7 @@ const POISON_PATTERNS = [
     '0xdeadbeef',
     '0xbaadf00d',
 ];
-function collectText(value, output = [], depth = 0) {
+function collectText(value: unknown, output: string[] = [], depth = 0): string[] {
     if (depth > 4 || value === null || value === undefined)
         return output;
     if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
@@ -20,13 +74,13 @@ function collectText(value, output = [], depth = 0) {
         return output;
     }
     if (typeof value === 'object') {
-        for (const nested of Object.values(value).slice(0, 30)) {
+        for (const nested of Object.values(value as Record<string, unknown>).slice(0, 30)) {
             collectText(nested, output, depth + 1);
         }
     }
     return output;
 }
-function diagnosticText(snapshot) {
+function diagnosticText(snapshot: RuntimeSnapshot): string {
     const stopped = snapshot.stopped;
     return [
         stopped?.reason,
@@ -35,7 +89,7 @@ function diagnosticText(snapshot) {
         ...collectText(snapshot.exception),
     ].filter((value) => Boolean(value)).join(' ').toLowerCase();
 }
-function exceptionFatality(snapshot) {
+function exceptionFatality(snapshot: RuntimeSnapshot): boolean | undefined {
     const mode = snapshot.exception?.breakMode;
     if (mode === 'unhandled' || mode === 'userUnhandled')
         return true;
@@ -48,14 +102,14 @@ function exceptionFatality(snapshot) {
         return false;
     return undefined;
 }
-function crashClassification(category, defaultConfidence, fatality) {
+function crashClassification(category: DiagnosisCategory, defaultConfidence: DiagnosisConfidence, fatality: boolean | undefined): CrashDiagnosis['classification'] {
     return {
         category,
         crashLikely: fatality !== false,
         confidence: fatality === false ? 'medium' : defaultConfidence,
     };
 }
-function classify(snapshot) {
+function classify(snapshot: RuntimeSnapshot): CrashDiagnosis['classification'] {
     const stopped = snapshot.stopped;
     const text = diagnosticText(snapshot);
     const fatality = stopped?.reason === 'exception' ? exceptionFatality(snapshot) : undefined;
@@ -96,7 +150,7 @@ function classify(snapshot) {
             return { category: 'unknown', crashLikely: false, confidence: 'low' };
     }
 }
-function parseAddress(value) {
+function parseAddress(value: string | undefined): bigint | undefined {
     if (!value)
         return undefined;
     const compact = value.trim().replace(/[`'_\s]/g, '');
@@ -110,7 +164,7 @@ function parseAddress(value) {
         return undefined;
     }
 }
-export function correlateSourceDisassembly(snapshot) {
+export function correlateSourceDisassembly(snapshot: RuntimeSnapshot): SourceDisassemblyCorrelation {
     const instructions = snapshot.disassembly ?? [];
     const ip = snapshot.frame.instructionPointerReference;
     const ipAddress = parseAddress(ip);
@@ -153,10 +207,10 @@ export function correlateSourceDisassembly(snapshot) {
         nextInstructions: currentIndex >= 0 ? instructions.slice(currentIndex + 1, currentIndex + 4) : [],
     };
 }
-function looksPointerLike(variable) {
+function looksPointerLike(variable: DebugProtocol.Variable): boolean {
     return /\*|pointer|ptr\b|address|handle|\bthis\b|\bself\b|object|reference/i.test(`${variable.name} ${variable.type ?? ''}`);
 }
-function suspiciousValues(snapshot) {
+function suspiciousValues(snapshot: RuntimeSnapshot): SuspiciousValue[] {
     const output = [];
     const scan = (scope, variables) => {
         for (const variable of variables) {
@@ -191,11 +245,11 @@ function suspiciousValues(snapshot) {
         scan('register', snapshot.registers);
     return output;
 }
-function locationText(snapshot) {
+function locationText(snapshot: RuntimeSnapshot): string {
     const path = snapshot.frame.source?.path ?? snapshot.frame.source?.name;
     return path ? `${snapshot.frame.name} at ${path}:${snapshot.frame.line}` : snapshot.frame.name;
 }
-function buildHypotheses(snapshot, classification, suspicious) {
+function buildHypotheses(snapshot: RuntimeSnapshot, classification: CrashDiagnosis['classification'], suspicious: SuspiciousValue[]): DiagnosisHypothesis[] {
     const hypotheses = [];
     const nullValues = suspicious.filter((item) => item.reason === 'null-like-pointer');
     const nullLocals = nullValues.filter((item) => item.scope === 'local');
@@ -361,7 +415,7 @@ function buildHypotheses(snapshot, classification, suspicious) {
     }
     return hypotheses;
 }
-export function analyzeRuntimeSnapshot(snapshot) {
+export function analyzeRuntimeSnapshot(snapshot: RuntimeSnapshot): CrashDiagnosis {
     const classification = classify(snapshot);
     const suspicious = suspiciousValues(snapshot);
     const correlation = correlateSourceDisassembly(snapshot);
