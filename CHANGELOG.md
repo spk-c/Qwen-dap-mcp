@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — TypeScript source migration
+
+- Migrated 51 runtime modules to source-of-truth TypeScript while retaining JS compatibility and safety fixes.
+- Recovered legacy v0.12.0 TypeScript definitions as reference; 37 modules statically checked, 14 still require full annotations.
+
 ## 0.19.0
 
 - Rebuilt editable JavaScript sources after the imported TypeScript project was unavailable.

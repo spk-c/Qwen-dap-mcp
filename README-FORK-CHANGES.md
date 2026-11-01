@@ -28,3 +28,10 @@ Legacy .d.ts declarations and .js.map source maps originate from the compiled up
 - Added dependency-update and CodeQL workflows.
 - The fork now uses a distinct private package name to avoid publishing to the upstream npm scope. This does not imply an npm release.
 - Native postmortem/remote E2E tests and package locking must be completed before tagging a release.
+
+## TypeScript migration
+
+- Recovered original v0.12.0 TypeScript sources for reference without replacing any modern debugger logic.
+- Migrated all 51 modern runtime modules to authoritative .ts files compiled with tsc; generated JS mirrors preserve Node ESM/test compatibility.
+- Regenerated declarations from TypeScript, enabled static checking for 37 modules, and documented 14 temporary @ts-nocheck cases (not yet fully strict).
+- Retained the existing unit/native debugger/postmortem/remote/CodeQL CI gates and exact JS synchronization checks.
