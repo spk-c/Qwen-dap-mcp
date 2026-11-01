@@ -289,7 +289,7 @@ function score(items, contradictions) {
 export function buildFailureHypotheses(options) {
     const outputLines = options.outputLines ?? [];
     const text = `${exceptionText(options.snapshot)}\n${outputLines.join('\n').toLowerCase()}`;
-    const hazardKinds = new Set((options.memoryHazards ?? []).map((item) => String(item.kind ?? '')));
+    const hazardKinds = new Set<string>((options.memoryHazards ?? []).map((item) => String(item.kind ?? '')));
     const stackIntegrity = options.stackIntegrity ?? analyzeStackIntegrity(options.snapshot, outputLines);
     const hypotheses = [];
     const add = (id, title, supporting, contradicting, nextEvidence) => {
