@@ -10,3 +10,8 @@
 - Updated fork documentation and package repository links.
 
 Legacy .d.ts declarations and .js.map source maps originate from the compiled upstream package. They are historical; they do not contain the missing TypeScript sources.
+
+2026-11-01 follow-up:
+- Fail closed on stale asynchronous DAP policy decisions and malformed DAP envelopes, bind response command to request, remove obsolete event waiters, bound stderr history.
+- Added real stdio DAP adapter fixture, protocol integration tests, and more transport regressions.
+- Restricted evidence imports to dedicated extension names and bounded file-descriptor reads with identity checks.

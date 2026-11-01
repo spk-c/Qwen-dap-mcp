@@ -567,7 +567,7 @@ export function registerRuntimeV2Tools(server, session) {
     });
     server.registerTool('debug_evidence_bundle', {
         title: 'Export or Import Debug Evidence',
-        description: 'Export bounded structured debugger evidence as JSON, Markdown, or SARIF, or import a JSON/SARIF bundle for offline analysis after the original process is gone. Use it for reproducible bug reports, CI handoff, or evidence replay between sessions. Do not use imported evidence as if it were live state, and exports refuse accidental overwrite by default.',
+        description: 'Export bounded structured debugger evidence as JSON, Markdown, or SARIF, or import a dedicated .qwen-dap.json/.qwen-dap.sarif/.qwen-dap.sarif.json file for offline analysis. Arbitrary JSON files are rejected to prevent unintended local file disclosure. Do not treat imported evidence as live state; exports refuse accidental overwrite by default.',
         annotations: LOCAL_ARTIFACT_WRITE_ANNOTATIONS,
         outputSchema: debugEvidenceBundleOutputSchema,
         inputSchema: z.object({
