@@ -1,15 +1,15 @@
 # Changelog
 
-## 0.19.0 — release candidate (not yet published)
+## 0.19.0
 
 - Rebuilt editable JavaScript sources after the imported TypeScript project was unavailable.
-- Added Windows/Linux native C++ integration tests for GDB, LLDB-DAP, and CodeLLDB.
+- Added Windows/Linux native C++ integration tests for GDB, LLDB-DAP, and CodeLLDB, real Linux core dumps (including GDB 18.1), Windows minidumps and loopback gdbserver remote debugging.
 - Strengthened DAP request/response validation, adapter generations and evidence file handling.
 - Added source-map and source/build cleanup, generated JS declarations, missing docs and MCP stdio/security regression tests.
-- Added CodeQL and dependency update automation.
+- Added CodeQL, Dependabot, a committed npm lockfile, reproducible `npm ci` and actual package-tarball smoke tests.
 - The fork package is marked private to avoid publishing into an upstream-owned npm scope.
 
-**Release gating:** Verify this branch's GitHub Actions, postmortem/remote tests and reproducible dependency install before creating a 0.19.0 tag or GitHub release.
+**Publication:** The GitHub release is created only after a manual, CI-gated workflow. See `docs/publishing.md` and the Releases page for publication status.
 
 ## 0.18.2 — initial imported runtime
 
