@@ -1,0 +1,83 @@
+name: Publish verified GitHub release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (this workflow is scoped to 0.19.0)'
+        required: true
+        default: '0.19.0'
+        type: string
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: publish-qwen-dap-mcp-release
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate release is explicitly triggered from main
+        env:
+          VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          test "$GITHUB_REF" = "refs/heads/main" || { echo 'Run this workflow from main only.'; exit 1; }
+          test "$VERSION" = "0.19.0" || { echo 'This release workflow is restricted to 0.19.0.'; exit 1; }
+          node -e "const p=require('./package.json');const q=require('./qwen-extension.json');if(p.version!=='0.19.0'||q.version!==p.version||p.private!==true)process.exit(1)"
+      - name: Require successful CI, native debuggers, postmortem, remote and CodeQL
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$GITHUB_SHA&per_page=100" > /tmp/qwen-dap-ci.json
+          for workflow in \
+            "CI" "Native debugger end-to-end" "Native postmortem E2E" \
+            "Loopback GDB remote E2E" "Windows CodeLLDB minidump E2E" "CodeQL"; do
+            conclusion=$(jq -r --arg name "$workflow" '[.workflow_runs[] | select(.name == $name) | .conclusion] | .[0] // "missing"' /tmp/qwen-dap-ci.json)
+            printf '%s: %s\n' "$workflow" "$conclusion"
+            test "$conclusion" = success || { echo "Missing successful required workflow: $workflow"; exit 1; }
+          done
+      - name: Reproducible install
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Full verification
+        run: npm run check
+      - name: Actual archive integrity check
+        run: npm run check:pack
+      - name: Build release archive and SHA256 manifest
+        shell: bash
+        run: |
+          mkdir -p release-assets
+          npm pack --ignore-scripts --pack-destination release-assets
+          cd release-assets
+          sha256sum ./*.tgz > SHA256SUMS
+      - name: Tag vetted commit and publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          tag=v0.19.0
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists; refusing to overwrite."
+            exit 1
+          fi
+          git fetch origin --tags
+          if git rev-parse --verify "refs/tags/$tag" >/dev/null 2>&1; then
+            actual=$(git rev-list -n 1 "$tag")
+            test "$actual" = "$GITHUB_SHA" || { echo "Tag $tag points at another commit."; exit 1; }
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$tag" "$GITHUB_SHA" -m "Qwen DAP MCP 0.19.0"
+            git push origin "refs/tags/$tag"
+          fi
+          gh release create "$tag" release-assets/*.tgz release-assets/SHA256SUMS \
+            --verify-tag --title "Qwen DAP MCP 0.19.0" \
+            --notes-file RELEASE-0.19.0.md --latest
