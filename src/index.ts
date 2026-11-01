@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-// @ts-nocheck
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { logger } from './logger.js';
 import { createServer } from './server.js';

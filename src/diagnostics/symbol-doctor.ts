@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { readdirSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -137,7 +136,7 @@ export function compareBinaryAndPdb(binary, pdb) {
         strength: binary.pdb.age && pdb.age ? 'strong-guid-age' : 'guid-only',
     };
 }
-export function findLocalSymbolCandidates(modules, searchPaths, options = {}) {
+export function findLocalSymbolCandidates(modules, searchPaths, options: { maxEntries?: number; maxDepth?: number } = {}) {
     const maxEntries = options.maxEntries ?? 2_000;
     const maxDepth = options.maxDepth ?? 4;
     const roots = searchPaths.map((path) => resolveExistingDirectory(path, 'Symbol search directory'));

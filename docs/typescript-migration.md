@@ -10,6 +10,6 @@ This is a behavior-preserving source-language migration based on the **current 0
 
 ## Static typing debt
 
-The initial conversion checks **18 modules** with TypeScript, while **33 modules** temporarily use `// @ts-nocheck` because original API interfaces were lost during npm compilation. These markers are stripped from emitted JavaScript. The project is TypeScript-built, **not yet fully statically type-safe**. Restore interfaces incrementally from the older source reference, remove the opt-outs, then enable strict mode after the full tree passes.
+The initial conversion checks **34 modules** with TypeScript, while **17 modules** temporarily use `// @ts-nocheck` because original API interfaces were lost during npm compilation. These markers are stripped from emitted JavaScript. The project is TypeScript-built, **not yet fully statically type-safe**. Restore interfaces incrementally from the older source reference, remove the opt-outs, then enable strict mode after the full tree passes.
 
 All live debugger, postmortem, remote and MCP integration checks remain required before merging or publishing.

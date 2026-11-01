@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { spawn } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 import { DapError } from '../dap/errors.js';
@@ -57,7 +56,7 @@ export class ManagedRrReplay {
         };
         child.stdout.on('data', capture);
         child.stderr.on('data', capture);
-        await new Promise((resolve, reject) => {
+        await new Promise<void>((resolve, reject) => {
             const onSpawn = () => {
                 cleanup();
                 resolve();

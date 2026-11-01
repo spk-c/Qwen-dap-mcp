@@ -1,4 +1,3 @@
-// @ts-nocheck
 import * as z from 'zod/v4';
 import { correlateSourceDisassembly } from '../diagnostics/analyze-snapshot.js';
 import { DapError } from '../dap/errors.js';
@@ -58,7 +57,7 @@ function createResumeWait(session, timeoutMs) {
         session.connection.off('adapterExit', onAdapterExit);
         session.connection.off('adapterError', onAdapterError);
     };
-    const finish = (outcome, error) => {
+    const finish = (outcome, error?: Error) => {
         if (settled)
             return;
         settled = true;
