@@ -1,15 +1,26 @@
 import * as z from 'zod/v4';
+import type { McpServer } from '@modelcontextprotocol/server';
+import type { GuardedDapSession } from '../dap/guarded-session.js';
+import type { RuntimeSnapshotOptions } from '../dap/session.js';
 import { DapError, DapTimeoutError } from '../dap/errors.js';
 import { LOCAL_TARGET_EXECUTION_ANNOTATIONS } from './tool-annotations.js';
 import { debugRunToStopOutputSchema, structuredResult } from './agent-output.js';
 const OUTCOME_EVENTS = new Set(['stopped', 'exited', 'terminated']);
-function createOutcomeWait(session, timeoutMs) {
+type DapOutcomeEvent = { event: string; body?: { threadId?: number } };
+type RunToStopOptions = {
+    request?: 'launch' | 'attach';
+    configuration: Record<string, unknown>;
+    breakpoints?: Array<{ source: string; lines: number[] }>;
+    timeoutMs?: number;
+    snapshot?: RuntimeSnapshotOptions;
+};
+function createOutcomeWait(session: GuardedDapSession, timeoutMs: number) {
     let active = true;
-    let resolvePromise;
-    let handler;
-    let onAdapterExit;
-    let onAdapterError;
-    let timer;
+    let resolvePromise!: (value: DapOutcomeEvent | undefined) => void;
+    let handler!: (event: DapOutcomeEvent) => void;
+    let onAdapterExit!: (detail: unknown) => void;
+    let onAdapterError!: (error: unknown) => void;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const cleanup = () => {
         if (!active)
             return;
@@ -19,7 +30,7 @@ function createOutcomeWait(session, timeoutMs) {
         session.connection.off('adapterExit', onAdapterExit);
         session.connection.off('adapterError', onAdapterError);
     };
-    const promise = new Promise<{event: string; body?: {threadId?: number}} | undefined>((resolve, reject) => {
+    const promise = new Promise<DapOutcomeEvent | undefined>((resolve, reject) => {
         resolvePromise = resolve;
         handler = (event) => {
             if (!OUTCOME_EVENTS.has(event.event))
@@ -53,7 +64,7 @@ function createOutcomeWait(session, timeoutMs) {
         },
     };
 }
-export async function runToStop(session, options) {
+export async function runToStop(session: GuardedDapSession, options: RunToStopOptions) {
     const request = options.request ?? 'launch';
     const breakpoints = options.breakpoints ?? [];
     const timeoutMs = options.timeoutMs ?? 30_000;
@@ -130,14 +141,14 @@ const snapshotSchema = z.object({
     moduleCount: z.number().int().positive().max(500).optional().describe('Maximum loaded modules to include.'),
     includeExceptionInfo: z.boolean().optional().describe('Whether to request structured exception information after a stop.'),
 }).describe('Optional bounds and evidence categories for the snapshot captured only when execution stops.');
-function result(value) {
+function result(value: unknown) {
     return structuredResult(value);
 }
-function errorResult(error) {
+function errorResult(error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    return { content: [{ type: 'text', text: message }], isError: true };
+    return { content: [{ type: 'text' as const, text: message }], isError: true };
 }
-export function registerRunToStopTool(server, session) {
+export function registerRunToStopTool(server: McpServer, session: GuardedDapSession): void {
     server.registerTool('debug_run_to_stop', {
         title: 'Run Until Debug Stop or Exit',
         description: 'Run one live launch or attach through an already initialized DAP adapter until the first stopped, exited, or terminated event. Use this when you need deterministic runtime evidence from a reproduction; do not use it for a postmortem dump or when executing/attaching to the local target is not authorized. Launch mode executes application code and attach mode changes debugger control of an existing process, so normal target side effects may occur before the stop. Returns the request result, terminal/stopped outcome, session status, and a bounded snapshot only when a stopped event is captured.',

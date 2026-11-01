@@ -1,4 +1,6 @@
 import * as z from 'zod/v4';
+import type { McpServer } from '@modelcontextprotocol/server';
+import type { DapSessionRegistry } from '../dap/session-registry.js';
 import { debugSessionsOutputSchema, structuredResult } from './agent-output.js';
 import { SESSION_TEARDOWN_ANNOTATIONS } from './tool-annotations.js';
 const sessionIdSchema = z
@@ -6,11 +8,11 @@ const sessionIdSchema = z
     .min(1)
     .max(64)
     .regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/);
-function errorResult(error) {
+function errorResult(error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    return { content: [{ type: 'text', text: message }], isError: true };
+    return { content: [{ type: 'text' as const, text: message }], isError: true };
 }
-export function registerSessionTools(server, registry) {
+export function registerSessionTools(server: McpServer, registry: DapSessionRegistry): void {
     server.registerTool('debug_sessions', {
         title: 'Manage Debug Sessions',
         description: 'Use this tool to list, create, or close isolated DAP sessions before routing other debugger tools with sessionId. Omit sessionId on normal debug tools only when the backward-compatible default session is intended; do not use a global session selector for concurrent work.',
@@ -23,8 +25,8 @@ export function registerSessionTools(server, registry) {
         annotations: SESSION_TEARDOWN_ANNOTATIONS,
     }, async ({ action, sessionId, terminateDebuggee }) => {
         try {
-            let resultSessionId;
-            let removed;
+            let resultSessionId: string | undefined;
+            let removed: boolean | undefined;
             if (action === 'create') {
                 resultSessionId = registry.create(sessionId).sessionId;
             }

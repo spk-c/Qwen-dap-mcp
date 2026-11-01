@@ -1,11 +1,11 @@
 import * as z from 'zod/v4';
-export function structuredResult(value) {
+export function structuredResult(value: unknown) {
     const serialized = JSON.stringify(value);
     if (serialized === undefined)
         throw new TypeError('Structured MCP tool output must be JSON-serializable.');
     const structuredContent = JSON.parse(serialized);
     return {
-        content: [{ type: 'text', text: JSON.stringify(structuredContent, null, 2) }],
+        content: [{ type: 'text' as const, text: JSON.stringify(structuredContent, null, 2) }],
         structuredContent,
     };
 }
