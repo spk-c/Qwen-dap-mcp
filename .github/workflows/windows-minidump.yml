@@ -1,0 +1,52 @@
+name: Windows CodeLLDB minidump E2E
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  windows-minidump:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Fetch official CodeLLDB release
+        shell: pwsh
+        run: |
+          $uri = 'https://github.com/vadimcn/codelldb/releases/download/v1.12.3/codelldb-win32-x64.vsix'
+          Invoke-WebRequest -Uri $uri -OutFile codelldb.zip -MaximumRedirection 10
+          Expand-Archive codelldb.zip -DestinationPath codelldb-install -Force
+          $adapter = (Resolve-Path 'codelldb-install/extension/adapter/codelldb.exe').Path
+          Add-Content $env:GITHUB_ENV "NATIVE_DAP_PATH=$adapter"
+      - name: Compile test-only crash program
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force integration/bin | Out-Null
+          $programFilesX86 = [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
+          $vswhere = Join-Path $programFilesX86 'Microsoft Visual Studio\Installer\vswhere.exe'
+          $vs = & $vswhere -latest -products * -property installationPath
+          if (-not $vs) { throw 'Visual Studio Build Tools not found' }
+          $vcvars = Join-Path $vs 'VC\Auxiliary\Build\vcvars64.bat'
+          $quote = [char]34
+          $cmd = "$quote$vcvars$quote && cl.exe /nologo /std:c++17 /Zi /Od /EHsc integration\fixture\windows-minidump.cpp /Fe:integration\bin\windows-minidump.exe /link /DEBUG"
+          cmd /c $cmd
+          if ($LASTEXITCODE -ne 0) { throw 'MSVC compile failed' }
+      - name: Generate crash minidump from own fixture process
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path 'integration/bin/windows-minidump.exe').Path
+          $dump = Join-Path $env:GITHUB_WORKSPACE 'integration\bin\synthetic-crash.dmp'
+          $env:NATIVE_TEST_DUMP_PATH = $dump
+          $p = Start-Process -FilePath $exe -Wait -PassThru
+          if (-not (Test-Path $dump)) { throw "No minidump produced (exit $($p.ExitCode))" }
+          if ((Get-Item $dump).Length -lt 1024) { throw 'Generated minidump is empty' }
+          Add-Content $env:GITHUB_ENV "RUN_WINDOWS_MINIDUMP_TESTS=1"
+          Add-Content $env:GITHUB_ENV "NATIVE_DAP_BINARY=$exe"
+          Add-Content $env:GITHUB_ENV "NATIVE_DAP_DUMP=$dump"
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Verify CodeLLDB minidump analysis and frozen session
+        run: node --test integration/windows-minidump.mjs
