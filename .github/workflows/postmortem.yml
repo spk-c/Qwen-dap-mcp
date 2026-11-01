@@ -1,0 +1,48 @@
+name: Native postmortem E2E
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  core-linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        adapter: [gdb, lldb-dap]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install native tools
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends gdb lldb-18 g++
+      - name: Compile debug fixture and generate authentic crash core
+        shell: bash
+        run: |
+          mkdir -p integration/bin
+          g++ -std=c++17 -g -O0 -fno-omit-frame-pointer integration/fixture/native-debug.cpp -o integration/bin/native-debug
+          gdb --nx --batch --quiet -ex 'set pagination off' -ex 'run' -ex "generate-core-file $PWD/integration/bin/fixture.core" --args "$PWD/integration/bin/native-debug" crash
+          test -s integration/bin/fixture.core
+      - name: Set environment for real debugger
+        shell: bash
+        env:
+          KIND: ${{ matrix.adapter }}
+        run: |
+          if [ "$KIND" = "gdb" ]; then
+            adapter_path=$(command -v gdb)
+          else
+            adapter_path=$(command -v lldb-dap-18)
+          fi
+          test -x "$adapter_path"
+          echo "RUN_POSTMORTEM_TESTS=1" >> "$GITHUB_ENV"
+          echo "NATIVE_DAP_ADAPTER=$KIND" >> "$GITHUB_ENV"
+          echo "NATIVE_DAP_PATH=$adapter_path" >> "$GITHUB_ENV"
+          echo "NATIVE_DAP_BINARY=$PWD/integration/bin/native-debug" >> "$GITHUB_ENV"
+          echo "NATIVE_DAP_CORE=$PWD/integration/bin/fixture.core" >> "$GITHUB_ENV"
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Load core and verify inspection-only enforcement
+        run: node --test integration/postmortem.mjs
