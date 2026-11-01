@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { DapError } from '../dap/errors.js';
 import { resolveExistingDirectory, resolveExistingFile } from '../local-path.js';
 const MIN_CODELLDB_EXTENSION_VERSION = [1, 11, 0];
-function isFile(path) {
+function isFile(path: string): boolean {
     try {
         return statSync(path).isFile();
     }
@@ -16,7 +16,7 @@ function isFile(path) {
 function executableName() {
     return process.platform === 'win32' ? 'codelldb.exe' : 'codelldb';
 }
-function defaultExtensionRoots(env, homeDirectory) {
+function defaultExtensionRoots(env: NodeJS.ProcessEnv, homeDirectory: string): string[] {
     const roots = [
         env.VSCODE_EXTENSIONS,
         join(homeDirectory, '.vscode', 'extensions'),
@@ -24,17 +24,17 @@ function defaultExtensionRoots(env, homeDirectory) {
         join(homeDirectory, '.cursor', 'extensions'),
         join(homeDirectory, '.windsurf', 'extensions'),
         join(homeDirectory, '.vscode-oss', 'extensions'),
-    ].filter((value) => Boolean(value));
+    ].filter((value): value is string => typeof value === 'string' && value.length > 0);
     return [...new Set(roots.map((root) => resolve(root)))];
 }
-function extensionVersion(entry) {
+function extensionVersion(entry: string): number[] | undefined {
     const match = /^vadimcn\.vscode-lldb-(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/i.exec(entry);
     if (!match)
         return undefined;
     const version = [Number(match[1]), Number(match[2]), Number(match[3])];
     return version.every((value) => Number.isSafeInteger(value) && value >= 0) ? version : undefined;
 }
-function versionAtLeast(version, minimum) {
+function versionAtLeast(version: readonly number[], minimum: readonly number[]): boolean {
     for (let index = 0; index < Math.max(version.length, minimum.length); index += 1) {
         const current = version[index] ?? 0;
         const required = minimum[index] ?? 0;
@@ -45,7 +45,7 @@ function versionAtLeast(version, minimum) {
     }
     return true;
 }
-function findExtensionAdapter(root, searched) {
+function findExtensionAdapter(root: string, searched: string[]) {
     if (!existsSync(root)) {
         searched.push(root);
         return undefined;
@@ -78,7 +78,7 @@ function findExtensionAdapter(root, searched) {
     }
     return undefined;
 }
-function findOnPath(command) {
+function findOnPath(command: string): string | undefined {
     const locator = process.platform === 'win32' ? 'where.exe' : 'which';
     const result = spawnSync(locator, [command], {
         encoding: 'utf8',
@@ -128,7 +128,9 @@ export function discoverCodeLldb(options: CodeLldbDiscoveryOptions = {}) {
     }
     throw new Error(`CodeLLDB was not found. Install vadimcn.vscode-lldb >= 1.11.0, set CODELLDB_PATH, or pass adapterPath. Extension discovery rejects versions older than 1.11.0. Searched: ${searched.join(', ')}`);
 }
-export function buildCodeLldbLaunchConfiguration(options) {
+export type CodeLldbLaunchOptions = { program: string; cwd?: string; args?: string[]; env?: NodeJS.ProcessEnv; stopOnEntry?: boolean };
+export type CodeLldbAttachOptions = { pid: number; program?: string; stopOnEntry?: boolean };
+export function buildCodeLldbLaunchConfiguration(options: CodeLldbLaunchOptions) {
     const program = resolveExistingFile(options.program, 'Program executable');
     const cwd = options.cwd
         ? resolveExistingDirectory(options.cwd, 'Working directory')
@@ -146,7 +148,7 @@ export function buildCodeLldbLaunchConfiguration(options) {
         terminal: 'console',
     };
 }
-export function buildCodeLldbAttachConfiguration(options) {
+export function buildCodeLldbAttachConfiguration(options: CodeLldbAttachOptions) {
     if (!Number.isSafeInteger(options.pid) || options.pid <= 0) {
         throw new DapError(`CodeLLDB attach PID must be a positive safe integer; received ${String(options.pid)}`);
     }
