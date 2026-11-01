@@ -1,0 +1,16 @@
+node_modules/
+coverage/
+*.log
+*.log.*
+.env
+.env.*
+!.env.example
+*.core
+*.dmp
+*.dump
+*.sarif
+*.qwen-dap.json
+*.qwen-dap.md
+.playwright-mcp/
+.qwen/settings.json
+.qwen/*.log
