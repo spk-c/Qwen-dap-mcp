@@ -1,3 +1,5 @@
+import type { McpServer } from '@modelcontextprotocol/server';
+import type { DapSessionRegistry } from '../dap/session-registry.js';
 import * as z from 'zod/v4';
 import { debugSessionsOutputSchema, structuredResult } from './agent-output.js';
 import { SESSION_TEARDOWN_ANNOTATIONS } from './tool-annotations.js';
@@ -10,7 +12,7 @@ function errorResult(error) {
     const message = error instanceof Error ? error.message : String(error);
     return { content: [{ type: 'text', text: message }], isError: true };
 }
-export function registerSessionTools(server, registry) {
+export function registerSessionTools(server: McpServer, registry: DapSessionRegistry) {
     server.registerTool('debug_sessions', {
         title: 'Manage Debug Sessions',
         description: 'Use this tool to list, create, or close isolated DAP sessions before routing other debugger tools with sessionId. Omit sessionId on normal debug tools only when the backward-compatible default session is intended; do not use a global session selector for concurrent work.',
