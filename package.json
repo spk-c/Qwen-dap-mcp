@@ -1,0 +1,98 @@
+{
+  "name": "@slp-dev1/qwen-dap-mcp",
+  "version": "0.18.2",
+  "description": "Agentic native debugging via DAP→MCP: crashes, hangs, dumps, causal/lifetime tracing, symbols, record/replay, crash families, and evidence-driven verification.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "bin": {
+    "qwen-dap-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "NOTICE",
+    "qwen-extension.json",
+    "server.json",
+    "skills",
+    "scripts/hol-guard-dap-policy.py"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/index.ts",
+    "test": "tsx --test test/*.test.ts",
+    "test:hol-guard:real": "node test/hol-guard-real-smoke.mjs",
+    "test:codelldb:real": "tsx test/codelldb-real-smoke.ts",
+    "test:codelldb:dump": "tsx test/codelldb-real-dump-smoke.ts",
+    "demo:build": "node scripts/build-crash-lab.mjs",
+    "demo:repro": "node scripts/run-crash-lab.mjs",
+    "demo:hang:build": "node scripts/build-hang-lab.mjs",
+    "demo:hang:repro": "node scripts/run-hang-lab.mjs",
+    "benchmark:report": "node scripts/benchmark-report.mjs",
+    "package:extension": "node scripts/build-extension-package.mjs",
+    "check": "npm run build && npm test && npm run package:extension",
+    "prepublishOnly": "npm run check",
+    "start": "node dist/index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "dap",
+    "debug-adapter-protocol",
+    "debugger",
+    "ai-debugger",
+    "native-debugging",
+    "debugging-agent",
+    "codelldb",
+    "lldb",
+    "gdb",
+    "core-dump",
+    "minidump",
+    "crash-debugging",
+    "crash-analysis",
+    "hang-debugging",
+    "deadlock-debugging",
+    "postmortem-debugging",
+    "differential-debugging",
+    "qwen",
+    "qwen-code",
+    "qwen-extension",
+    "coding-agent",
+    "agentic-debugging",
+    "hol-guard",
+    "agent-security",
+    "record-replay",
+    "rr",
+    "symbol-debugging",
+    "use-after-free",
+    "runtime-forensics",
+    "sarif"
+  ],
+  "license": "Apache-2.0",
+  "mcpName": "io.github.SLP-DEV1/qwen-dap-mcp",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SLP-DEV1/qwen-dap-mcp.git"
+  },
+  "homepage": "https://github.com/SLP-DEV1/qwen-dap-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/SLP-DEV1/qwen-dap-mcp/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "^2.0.0",
+    "@vscode/debugprotocol": "^1.68.0",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2"
+  }
+}

@@ -1,0 +1,559 @@
+import { DapConnection } from './connection.js';
+import { DapError, DapTimeoutError } from './errors.js';
+import { assessSymbolHealth } from './symbol-health.js';
+const MAX_READ_MEMORY_BYTES = 1024 * 1024;
+const MAX_DISASSEMBLY_INSTRUCTIONS = 10_000;
+const MAX_RELATIVE_DAP_OFFSET = 2_147_483_647;
+function assertSafeIntegerInRange(name, value, min, max) {
+    if (!Number.isSafeInteger(value) || value < min || value > max) {
+        throw new DapError(`${name} must be a safe integer between ${min} and ${max}; received ${String(value)}`);
+    }
+}
+function errorMessage(error) {
+    return error instanceof Error ? error.message : String(error);
+}
+function dedupeVariables(variables) {
+    const seen = new Set();
+    const output = [];
+    for (const variable of variables) {
+        const key = [
+            variable.name,
+            variable.value,
+            variable.type ?? '',
+            String(variable.variablesReference),
+            variable.memoryReference ?? '',
+            variable.evaluateName ?? '',
+        ].join('\u0000');
+        if (seen.has(key))
+            continue;
+        seen.add(key);
+        output.push(variable);
+    }
+    return output;
+}
+function latestActiveStoppedBody(records) {
+    for (const record of [...records].reverse()) {
+        const candidate = record;
+        if (candidate.event === 'continued' || candidate.event === 'exited' || candidate.event === 'terminated') {
+            return undefined;
+        }
+        if (candidate.event === 'stopped') {
+            return candidate.body;
+        }
+    }
+    return undefined;
+}
+export class DapSession {
+    connection = new DapConnection();
+    initialized = false;
+    configured = false;
+    stateUncertain = false;
+    activeRequest;
+    adapterId;
+    capabilities;
+    dataBreakpoints = [];
+    requestTimeoutMs = 15_000;
+    async start(options) {
+        await this.reset();
+        this.requestTimeoutMs = options.requestTimeoutMs ?? 15_000;
+        await this.connection.start({
+            command: options.command,
+            ...(options.args ? { args: options.args } : {}),
+            ...(options.cwd ? { cwd: options.cwd } : {}),
+            ...(options.env ? { env: options.env } : {}),
+        });
+        try {
+            const response = await this.connection.sendRequest('initialize', {
+                clientID: 'qwen-dap-mcp',
+                clientName: 'qwen-dap-mcp',
+                adapterID: options.adapterId,
+                pathFormat: 'path',
+                linesStartAt1: true,
+                columnsStartAt1: true,
+                supportsVariableType: true,
+                supportsVariablePaging: true,
+                supportsRunInTerminalRequest: false,
+                supportsMemoryReferences: true,
+                supportsProgressReporting: true,
+                supportsInvalidatedEvent: true,
+                supportsMemoryEvent: true,
+                locale: 'en',
+            }, this.requestTimeoutMs);
+            this.capabilities = (response.body ?? {});
+            this.adapterId = options.adapterId;
+            this.initialized = true;
+            this.stateUncertain = false;
+            return this.capabilities;
+        }
+        catch (error) {
+            await this.connection.stop();
+            throw error;
+        }
+    }
+    async launch(configuration, breakpoints = []) {
+        return this.beginDebugRequest('launch', configuration, breakpoints);
+    }
+    async attach(configuration, breakpoints = []) {
+        return this.beginDebugRequest('attach', configuration, breakpoints);
+    }
+    async setBreakpoints(source, lines) {
+        return this.setSourceBreakpoints(source, lines.map((line) => ({ line })));
+    }
+    async setSourceBreakpoints(source, breakpoints) {
+        this.assertInitialized();
+        const response = await this.sendStateChangingRequest('setBreakpoints', { source: { path: source }, breakpoints, sourceModified: false });
+        return (response.body?.breakpoints ?? []);
+    }
+    async setFunctionBreakpoints(breakpoints) {
+        this.assertInitialized();
+        this.assertCapability('supportsFunctionBreakpoints', 'setFunctionBreakpoints');
+        const response = await this.sendStateChangingRequest('setFunctionBreakpoints', { breakpoints });
+        return (response.body?.breakpoints ?? []);
+    }
+    async setInstructionBreakpoints(breakpoints) {
+        this.assertInitialized();
+        this.assertCapability('supportsInstructionBreakpoints', 'setInstructionBreakpoints');
+        const response = await this.sendStateChangingRequest('setInstructionBreakpoints', { breakpoints });
+        return (response.body?.breakpoints ?? []);
+    }
+    async dataBreakpointInfo(name, variablesReference, frameId) {
+        this.assertConfigured();
+        this.assertCapability('supportsDataBreakpoints', 'dataBreakpointInfo');
+        const args = {
+            name,
+            ...(variablesReference === undefined ? {} : { variablesReference }),
+            ...(frameId === undefined ? {} : { frameId }),
+        };
+        const response = await this.connection.sendRequest('dataBreakpointInfo', args, this.requestTimeoutMs);
+        return (response.body ?? { dataId: null, description: name, canPersist: false });
+    }
+    async setDataBreakpoints(breakpoints) {
+        this.assertConfigured();
+        this.assertCapability('supportsDataBreakpoints', 'setDataBreakpoints');
+        const response = await this.sendStateChangingRequest('setDataBreakpoints', { breakpoints });
+        this.dataBreakpoints = breakpoints.map((breakpoint) => ({ ...breakpoint }));
+        return (response.body?.breakpoints ?? []);
+    }
+    dataBreakpointConfiguration() {
+        return this.dataBreakpoints.map((breakpoint) => ({ ...breakpoint }));
+    }
+    async setExceptionBreakpoints(filters, filterOptions) {
+        this.assertInitialized();
+        const args = {
+            filters,
+            ...(filterOptions === undefined ? {} : { filterOptions }),
+        };
+        const response = await this.sendStateChangingRequest('setExceptionBreakpoints', args);
+        return (response.body?.breakpoints ?? []);
+    }
+    async pause(threadId, waitForStop = true, timeoutMs = 15_000) {
+        this.assertConfigured();
+        const stopped = waitForStop ? this.createThreadStopWait(threadId, timeoutMs) : undefined;
+        if (stopped)
+            void stopped.promise.catch(() => undefined);
+        let response;
+        try {
+            response = await this.sendStateChangingRequest('pause', { threadId });
+        }
+        catch (error) {
+            stopped?.cancel();
+            throw error;
+        }
+        if (!stopped)
+            return { requestedAction: 'pause', response: response.body ?? {} };
+        const event = await stopped.promise;
+        return {
+            requestedAction: 'pause',
+            response: response.body ?? {},
+            stopped: event.body ?? {},
+        };
+    }
+    async continueExecution(threadId, waitForStop = true, timeoutMs = 15_000) {
+        this.assertConfigured();
+        const stopped = waitForStop ? this.createThreadStopWait(threadId, timeoutMs) : undefined;
+        if (stopped)
+            void stopped.promise.catch(() => undefined);
+        let response;
+        try {
+            response = await this.sendStateChangingRequest('continue', { threadId });
+        }
+        catch (error) {
+            stopped?.cancel();
+            throw error;
+        }
+        if (!stopped)
+            return response.body ?? {};
+        const event = await stopped.promise;
+        return { response: response.body ?? {}, stopped: event.body ?? {} };
+    }
+    async step(action, threadId, waitForStop = true, timeoutMs = 15_000) {
+        this.assertConfigured();
+        const stopped = waitForStop ? this.createThreadStopWait(threadId, timeoutMs) : undefined;
+        if (stopped)
+            void stopped.promise.catch(() => undefined);
+        let response;
+        try {
+            response = await this.sendStateChangingRequest(action, { threadId });
+        }
+        catch (error) {
+            stopped?.cancel();
+            throw error;
+        }
+        if (!stopped)
+            return response.body ?? {};
+        const event = await stopped.promise;
+        return { response: response.body ?? {}, stopped: event.body ?? {} };
+    }
+    async reverseContinue(threadId, waitForStop = true, timeoutMs = 15_000) {
+        this.assertConfigured();
+        this.assertCapability('supportsStepBack', 'reverseContinue');
+        const stopped = waitForStop ? this.createThreadStopWait(threadId, timeoutMs) : undefined;
+        if (stopped)
+            void stopped.promise.catch(() => undefined);
+        let response;
+        try {
+            response = await this.sendStateChangingRequest('reverseContinue', { threadId });
+        }
+        catch (error) {
+            stopped?.cancel();
+            throw error;
+        }
+        if (!stopped)
+            return response.body ?? {};
+        const event = await stopped.promise;
+        return { response: response.body ?? {}, stopped: event.body ?? {} };
+    }
+    async stepBack(threadId, waitForStop = true, timeoutMs = 15_000) {
+        this.assertConfigured();
+        this.assertCapability('supportsStepBack', 'stepBack');
+        const stopped = waitForStop ? this.createThreadStopWait(threadId, timeoutMs) : undefined;
+        if (stopped)
+            void stopped.promise.catch(() => undefined);
+        let response;
+        try {
+            response = await this.sendStateChangingRequest('stepBack', { threadId });
+        }
+        catch (error) {
+            stopped?.cancel();
+            throw error;
+        }
+        if (!stopped)
+            return response.body ?? {};
+        const event = await stopped.promise;
+        return { response: response.body ?? {}, stopped: event.body ?? {} };
+    }
+    async threads() {
+        this.assertConfigured();
+        const response = await this.connection.sendRequest('threads', {}, this.requestTimeoutMs);
+        return (response.body?.threads ?? []);
+    }
+    async stackTrace(threadId, startFrame = 0, levels = 20) {
+        this.assertConfigured();
+        const response = await this.connection.sendRequest('stackTrace', { threadId, startFrame, levels }, this.requestTimeoutMs);
+        return (response.body?.stackFrames ?? []);
+    }
+    async scopes(frameId) {
+        this.assertConfigured();
+        const response = await this.connection.sendRequest('scopes', { frameId }, this.requestTimeoutMs);
+        return (response.body?.scopes ?? []);
+    }
+    async variables(variablesReference, start, count) {
+        this.assertConfigured();
+        if (!Number.isSafeInteger(variablesReference) || variablesReference <= 0) {
+            throw new DapError(`variablesReference must be a positive safe integer; received ${String(variablesReference)}`);
+        }
+        const args = {
+            variablesReference,
+            ...(start === undefined ? {} : { start }),
+            ...(count === undefined ? {} : { count }),
+        };
+        const response = await this.connection.sendRequest('variables', args, this.requestTimeoutMs);
+        return (response.body?.variables ?? []);
+    }
+    async evaluate(expression, frameId, context = 'watch') {
+        this.assertConfigured();
+        const args = { expression, context, ...(frameId === undefined ? {} : { frameId }) };
+        const response = await this.sendStateChangingRequest('evaluate', args);
+        return (response.body ?? { result: '', variablesReference: 0 });
+    }
+    async modules(startModule = 0, moduleCount = 100) {
+        this.assertConfigured();
+        this.assertCapability('supportsModulesRequest', 'modules');
+        const response = await this.connection.sendRequest('modules', { startModule, moduleCount }, this.requestTimeoutMs);
+        return (response.body?.modules ?? []);
+    }
+    async disassemble(memoryReference, instructionCount = 20, instructionOffset = 0, offset = 0, resolveSymbols = true) {
+        this.assertConfigured();
+        this.assertCapability('supportsDisassembleRequest', 'disassemble');
+        assertSafeIntegerInRange('instructionCount', instructionCount, 1, MAX_DISASSEMBLY_INSTRUCTIONS);
+        assertSafeIntegerInRange('instructionOffset', instructionOffset, -MAX_RELATIVE_DAP_OFFSET, MAX_RELATIVE_DAP_OFFSET);
+        assertSafeIntegerInRange('offset', offset, -MAX_RELATIVE_DAP_OFFSET, MAX_RELATIVE_DAP_OFFSET);
+        const response = await this.connection.sendRequest('disassemble', { memoryReference, instructionCount, instructionOffset, offset, resolveSymbols }, this.requestTimeoutMs);
+        return (response.body?.instructions ?? []);
+    }
+    async readMemory(memoryReference, count, offset = 0) {
+        this.assertConfigured();
+        this.assertCapability('supportsReadMemoryRequest', 'readMemory');
+        assertSafeIntegerInRange('count', count, 1, MAX_READ_MEMORY_BYTES);
+        assertSafeIntegerInRange('offset', offset, -MAX_RELATIVE_DAP_OFFSET, MAX_RELATIVE_DAP_OFFSET);
+        const response = await this.connection.sendRequest('readMemory', { memoryReference, count, offset }, this.requestTimeoutMs);
+        return (response.body ?? { address: memoryReference });
+    }
+    async exceptionInfo(threadId) {
+        this.assertConfigured();
+        this.assertCapability('supportsExceptionInfoRequest', 'exceptionInfo');
+        const response = await this.connection.sendRequest('exceptionInfo', { threadId }, this.requestTimeoutMs);
+        return (response.body ?? { exceptionId: 'unknown', breakMode: 'unhandled' });
+    }
+    async runtimeSnapshot(options = {}) {
+        this.assertConfigured();
+        const threadList = await this.threads();
+        if (threadList.length === 0)
+            throw new DapError('The debugger returned no threads for debug_snapshot.');
+        const stoppedBody = latestActiveStoppedBody(this.connection.recentEvents);
+        const selectedThreadId = options.threadId ?? stoppedBody?.threadId ?? threadList[0]?.id;
+        const thread = threadList.find((candidate) => candidate.id === selectedThreadId) ?? threadList[0];
+        if (!thread)
+            throw new DapError('Unable to select a thread for debug_snapshot.');
+        const stack = await this.stackTrace(thread.id, 0, options.stackLevels ?? 12);
+        const frame = stack[0];
+        if (!frame)
+            throw new DapError(`Thread ${thread.id} has no stack frame for debug_snapshot.`);
+        const frameScopes = await this.scopes(frame.id);
+        const maxVariables = options.maxVariablesPerScope ?? 100;
+        const collectionErrors = [];
+        const localScopes = frameScopes
+            .filter((scope) => /locals?|arguments?|parameters?/i.test(scope.name))
+            .slice(0, 3);
+        const registersScope = frameScopes.find((scope) => /register/i.test(scope.name));
+        const localVariables = [];
+        for (const scope of localScopes) {
+            if (scope.variablesReference <= 0)
+                continue;
+            try {
+                localVariables.push(...await this.variables(scope.variablesReference, 0, maxVariables));
+            }
+            catch (error) {
+                collectionErrors.push({ operation: 'locals', message: `${scope.name}: ${errorMessage(error)}` });
+            }
+        }
+        const locals = dedupeVariables(localVariables).slice(0, maxVariables * Math.max(1, localScopes.length));
+        let registers = [];
+        if (registersScope && registersScope.variablesReference > 0) {
+            try {
+                registers = dedupeVariables(await this.variables(registersScope.variablesReference, 0, maxVariables)).slice(0, maxVariables);
+            }
+            catch (error) {
+                collectionErrors.push({ operation: 'registers', message: errorMessage(error) });
+            }
+        }
+        let disassembly;
+        if ((options.includeDisassembly ?? true) && this.capabilities?.supportsDisassembleRequest && frame.instructionPointerReference) {
+            const before = options.disassembleBefore ?? 8;
+            const after = options.disassembleAfter ?? 12;
+            try {
+                disassembly = await this.disassemble(frame.instructionPointerReference, before + after + 1, -before, 0, true);
+            }
+            catch (error) {
+                collectionErrors.push({ operation: 'disassembly', message: errorMessage(error) });
+            }
+        }
+        let loadedModules;
+        if ((options.includeModules ?? false) && this.capabilities?.supportsModulesRequest) {
+            try {
+                loadedModules = await this.modules(0, options.moduleCount ?? 50);
+            }
+            catch (error) {
+                collectionErrors.push({ operation: 'modules', message: errorMessage(error) });
+            }
+        }
+        let exception;
+        if ((options.includeExceptionInfo ?? true) && stoppedBody?.reason === 'exception' && this.capabilities?.supportsExceptionInfoRequest) {
+            try {
+                exception = await this.exceptionInfo(thread.id);
+            }
+            catch (error) {
+                collectionErrors.push({ operation: 'exceptionInfo', message: errorMessage(error) });
+            }
+        }
+        return {
+            ...(stoppedBody === undefined ? {} : { stopped: stoppedBody }),
+            thread,
+            stack,
+            frame,
+            scopes: frameScopes,
+            locals,
+            registers,
+            symbolHealth: assessSymbolHealth(stack, loadedModules),
+            ...(disassembly === undefined ? {} : { disassembly }),
+            ...(loadedModules === undefined ? {} : { modules: loadedModules }),
+            ...(exception === undefined ? {} : { exception }),
+            ...(collectionErrors.length === 0 ? {} : { collectionErrors }),
+        };
+    }
+    snapshot() {
+        return {
+            adapterRunning: this.connection.isRunning,
+            ...(this.connection.pid === undefined ? {} : { adapterPid: this.connection.pid }),
+            initialized: this.initialized,
+            configured: this.configured,
+            stateUncertain: this.stateUncertain,
+            ...(this.activeRequest === undefined ? {} : { activeRequest: this.activeRequest }),
+            ...(this.adapterId === undefined ? {} : { adapterId: this.adapterId }),
+            ...(this.capabilities === undefined ? {} : { capabilities: this.capabilities }),
+            recentEvents: this.connection.recentEvents.slice(-25),
+            recentAdapterStderr: this.connection.recentStderr.slice(-25),
+        };
+    }
+    async disconnect(terminateDebuggee = true) {
+        if (this.connection.isRunning && this.initialized) {
+            try {
+                await this.connection.sendRequest('disconnect', { terminateDebuggee }, Math.min(this.requestTimeoutMs, 5_000));
+            }
+            catch {
+                // The adapter may terminate before acknowledging disconnect.
+            }
+        }
+        await this.reset();
+    }
+    async reset() {
+        await this.connection.stop();
+        this.initialized = false;
+        this.configured = false;
+        this.stateUncertain = false;
+        this.activeRequest = undefined;
+        this.adapterId = undefined;
+        this.capabilities = undefined;
+        this.dataBreakpoints = [];
+    }
+    async beginDebugRequest(request, configuration, breakpoints) {
+        this.assertInitialized();
+        if (this.stateUncertain)
+            throw new DapError('DAP session state is uncertain after a timed-out mutation. Reset the session before launch/attach.');
+        this.configured = false;
+        this.activeRequest = request;
+        const debugRequestTimeoutMs = Math.max(this.requestTimeoutMs, 60_000);
+        // GNU GDB 15+ follows the corrected DAP ordering implemented upstream:
+        // initialize -> configuration requests -> configurationDone -> launch.
+        // Source breakpoints are intentionally allowed to be pending before GDB
+        // knows the executable. CodeLLDB/lldb-dap retain the traditional path
+        // below where launch/attach starts first and initialized gates config.
+        if (this.adapterId === 'gdb') {
+            try {
+                const breakpointResults = [];
+                for (const group of breakpoints) {
+                    breakpointResults.push({ source: group.source, breakpoints: await this.setBreakpoints(group.source, group.lines) });
+                }
+                if (this.capabilities?.supportsConfigurationDoneRequest) {
+                    await this.sendStateChangingRequest('configurationDone', {});
+                }
+                const response = await this.sendStateChangingRequest(request, configuration, debugRequestTimeoutMs);
+                this.configured = true;
+                this.stateUncertain = false;
+                return { request, response: response.body ?? {}, breakpoints: breakpointResults, capabilities: this.capabilities ?? {} };
+            }
+            catch (error) {
+                this.configured = false;
+                this.activeRequest = undefined;
+                throw error;
+            }
+        }
+        const initializedEvent = this.connection.waitForEvent('initialized', debugRequestTimeoutMs, undefined, true);
+        const requestPromise = this.sendStateChangingRequest(request, configuration, debugRequestTimeoutMs);
+        const requestFailure = new Promise((_resolve, reject) => {
+            void requestPromise.catch(reject);
+        });
+        try {
+            // DAP launch/attach usually stays pending until configurationDone, but an
+            // adapter is allowed to reject it immediately. Surface that actionable
+            // request error instead of waiting up to 60s for an initialized event
+            // that will never arrive.
+            await Promise.race([initializedEvent, requestFailure]);
+            const breakpointResults = [];
+            for (const group of breakpoints) {
+                breakpointResults.push({ source: group.source, breakpoints: await this.setBreakpoints(group.source, group.lines) });
+            }
+            if (this.capabilities?.supportsConfigurationDoneRequest) {
+                await this.sendStateChangingRequest('configurationDone', {});
+            }
+            const response = await requestPromise;
+            this.configured = true;
+            this.stateUncertain = false;
+            return { request, response: response.body ?? {}, breakpoints: breakpointResults, capabilities: this.capabilities ?? {} };
+        }
+        catch (error) {
+            this.configured = false;
+            this.activeRequest = undefined;
+            throw error;
+        }
+    }
+    async sendStateChangingRequest(command, args, timeoutMs = this.requestTimeoutMs) {
+        try {
+            return await this.connection.sendRequest(command, args, timeoutMs);
+        }
+        catch (error) {
+            if (error instanceof DapTimeoutError)
+                this.stateUncertain = true;
+            throw error;
+        }
+    }
+    createThreadStopWait(threadId, timeoutMs) {
+        let active = true;
+        let timer;
+        let rejectPromise;
+        const cleanup = () => {
+            clearTimeout(timer);
+            this.connection.off('event:stopped', onStopped);
+            this.connection.off('adapterExit', onAdapterExit);
+            this.connection.off('adapterError', onAdapterError);
+        };
+        const finish = (event, error) => {
+            if (!active)
+                return;
+            active = false;
+            cleanup();
+            if (error)
+                rejectPromise(error);
+            else
+                resolvePromise(event);
+        };
+        let resolvePromise;
+        const onStopped = (event) => {
+            const body = event.body;
+            if (body?.allThreadsStopped !== true && body?.threadId !== undefined && body.threadId !== threadId)
+                return;
+            finish(event);
+        };
+        const onAdapterExit = () => finish(undefined, new DapError("DAP adapter exited while waiting for event 'stopped'"));
+        const onAdapterError = (error) => finish(undefined, error instanceof Error ? error : new DapError("DAP adapter failed while waiting for event 'stopped'"));
+        const promise = new Promise((resolve, reject) => {
+            resolvePromise = resolve;
+            rejectPromise = reject;
+            timer = setTimeout(() => finish(undefined, new DapTimeoutError("DAP event 'stopped'", timeoutMs)), timeoutMs);
+            this.connection.on('event:stopped', onStopped);
+            this.connection.on('adapterExit', onAdapterExit);
+            this.connection.on('adapterError', onAdapterError);
+        });
+        return {
+            promise,
+            cancel: () => finish(undefined, new DapError("DAP event 'stopped' wait cancelled because the associated request failed.")),
+        };
+    }
+    assertCapability(capability, requestName) {
+        if (!this.capabilities?.[capability])
+            throw new DapError(`The active DAP adapter does not advertise ${String(capability)} required for ${requestName}.`);
+    }
+    assertInitialized() {
+        if (!this.initialized || !this.connection.isRunning)
+            throw new DapError('No initialized DAP session. Call debug_start first.');
+    }
+    assertConfigured() {
+        this.assertInitialized();
+        if (this.stateUncertain) {
+            throw new DapError('DAP session state is uncertain after a timed-out state-changing request. Call debug_disconnect/debug_start or reset the session before further debugger operations.');
+        }
+        if (!this.configured)
+            throw new DapError('The debuggee has not been launched or attached yet.');
+    }
+}
+//# sourceMappingURL=session.js.map
