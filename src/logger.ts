@@ -1,19 +1,21 @@
-// @ts-nocheck
-const LEVEL_PRIORITY = {
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'silent';
+export type LogFields = Record<string, unknown>;
+export type LoggerOptions = { level?: string; sink?: (line: string) => void };
+const LEVEL_PRIORITY: Record<LogLevel, number> = {
     debug: 10,
     info: 20,
     warn: 30,
     error: 40,
     silent: Number.POSITIVE_INFINITY,
 };
-function normalizeLogLevel(value) {
+function normalizeLogLevel(value: string | undefined): LogLevel {
     const normalized = value?.trim().toLowerCase();
     if (normalized === 'debug' || normalized === 'info' || normalized === 'warn' || normalized === 'error' || normalized === 'silent') {
         return normalized;
     }
     return 'info';
 }
-function normalizeLogValue(value, ancestors) {
+function normalizeLogValue(value: unknown, ancestors: Set<object>): unknown {
     if (typeof value === 'bigint') {
         return value.toString();
     }
@@ -41,7 +43,7 @@ function normalizeLogValue(value, ancestors) {
         if (Array.isArray(value)) {
             return value.map((item) => normalizeLogValue(item, ancestors));
         }
-        const normalized = {};
+        const normalized: Record<string, unknown> = {};
         for (const [key, child] of Object.entries(value)) {
             normalized[key] = normalizeLogValue(child, ancestors);
         }
@@ -51,13 +53,13 @@ function normalizeLogValue(value, ancestors) {
         ancestors.delete(value);
     }
 }
-function stringifyLogRecord(record) {
-    return JSON.stringify(normalizeLogValue(record, new Set()));
+function stringifyLogRecord(record: Record<string, unknown>): string {
+    return JSON.stringify(normalizeLogValue(record, new Set<object>()));
 }
-export function createLogger(options = {}) {
+export function createLogger(options: LoggerOptions = {}) {
     const configuredLevel = normalizeLogLevel(options.level ?? process.env.QWEN_DAP_LOG_LEVEL);
-    const sink = options.sink ?? ((line) => process.stderr.write(`${line}\n`));
-    const write = (level, message, fields) => {
+    const sink = options.sink ?? ((line: string) => process.stderr.write(`${line}\n`));
+    const write = (level: Exclude<LogLevel, 'silent'>, message: string, fields?: LogFields) => {
         if (LEVEL_PRIORITY[level] < LEVEL_PRIORITY[configuredLevel])
             return;
         sink(stringifyLogRecord({
@@ -70,10 +72,10 @@ export function createLogger(options = {}) {
     };
     return {
         level: configuredLevel,
-        debug: (message, fields) => write('debug', message, fields),
-        info: (message, fields) => write('info', message, fields),
-        warn: (message, fields) => write('warn', message, fields),
-        error: (message, fields) => write('error', message, fields),
+        debug: (message: string, fields?: LogFields) => write('debug', message, fields),
+        info: (message: string, fields?: LogFields) => write('info', message, fields),
+        warn: (message: string, fields?: LogFields) => write('warn', message, fields),
+        error: (message: string, fields?: LogFields) => write('error', message, fields),
     };
 }
 export const logger = createLogger();
