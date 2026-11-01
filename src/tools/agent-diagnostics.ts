@@ -236,7 +236,7 @@ async function diagnoseSnapshot(session, snapshot, snapshotOptions, analysisOpti
     }
     return buildIntelligentDiagnosis(snapshot, base, selection, evidence);
 }
-async function captureDiagnosticSnapshot(session, options = {}, analysisOptions = {}) {
+async function captureDiagnosticSnapshot(session, options: import('../dap/session.js').RuntimeSnapshotOptions = {}, analysisOptions = {}) {
     const snapshot = await session.runtimeSnapshot({
         ...options,
         includeDisassembly: options.includeDisassembly ?? true,
@@ -408,7 +408,7 @@ export function registerAgentDiagnosticTools(server, session) {
                 projectCorrelation: correlateSourceDisassembly(projectSnapshot),
                 projectFrame: selectedFrame,
                 operandAnalysis: analyzeInstructionOperands(evidence),
-                ...(evidence.collectionErrors?.length ? { collectionErrors: evidence.collectionErrors } : {}),
+                ...('collectionErrors' in evidence && evidence.collectionErrors?.length ? { collectionErrors: evidence.collectionErrors } : {}),
             });
         }
         catch (error) {
