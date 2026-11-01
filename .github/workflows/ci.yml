@@ -19,9 +19,6 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       - run: npm install --ignore-scripts --no-audit --no-fund
-      - name: Emit generated dependency lockfile for review
-        if: runner.os == 'Linux' && matrix.node == 22
-        run: node -e "const fs=require('node:fs'); console.log('LOCKFILE_BEGIN'+fs.readFileSync('package-lock.json').toString('base64')+'LOCKFILE_END')"
       - run: npm run check
       - name: Verify committed build is synchronized
         run: git diff --exit-code -- dist
