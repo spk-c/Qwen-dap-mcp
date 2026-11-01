@@ -354,65 +354,65 @@ export class DapConnection extends EventEmitter {
             }
             this.buffer = Buffer.concat([this.buffer, piece]);
             while (true) {
-            const headerEnd = this.buffer.indexOf(HEADER_SEPARATOR);
-            if (headerEnd < 0) {
-                if (this.buffer.length > MAX_HEADER_BYTES) {
-                    const error = new DapError(`DAP header exceeded ${MAX_HEADER_BYTES} bytes without a terminator`);
+                const headerEnd = this.buffer.indexOf(HEADER_SEPARATOR);
+                if (headerEnd < 0) {
+                    if (this.buffer.length > MAX_HEADER_BYTES) {
+                        const error = new DapError(`DAP header exceeded ${MAX_HEADER_BYTES} bytes without a terminator`);
+                        this.failProtocol(error);
+                        return;
+                    }
+                    break;
+                }
+                if (headerEnd > MAX_HEADER_BYTES) {
+                    const error = new DapError(`DAP header exceeded ${MAX_HEADER_BYTES} bytes before its terminator`);
                     this.failProtocol(error);
                     return;
                 }
-                break;
-            }
-            if (headerEnd > MAX_HEADER_BYTES) {
-                const error = new DapError(`DAP header exceeded ${MAX_HEADER_BYTES} bytes before its terminator`);
-                this.failProtocol(error);
-                return;
-            }
-            const headerText = this.buffer.subarray(0, headerEnd).toString('ascii');
-            const lengthMatches = [...headerText.matchAll(/(?:^|\r\n)Content-Length:\s*(\d+)\s*(?=\r\n|$)/gi)];
-            const contentLengthText = lengthMatches[0]?.[1];
-            if (!contentLengthText || lengthMatches.length !== 1) {
-                const error = new DapError(lengthMatches.length > 1
-                    ? 'Invalid DAP header: multiple Content-Length fields are not allowed'
-                    : `Invalid DAP header: ${headerText.slice(0, 500)}`);
-                this.failProtocol(error);
-                return;
-            }
-            const contentLength = Number.parseInt(contentLengthText, 10);
-            if (!Number.isSafeInteger(contentLength) || contentLength < 0 || contentLength > MAX_DAP_PAYLOAD_BYTES) {
-                const error = new DapError(`DAP Content-Length ${contentLengthText} exceeds the ${MAX_DAP_PAYLOAD_BYTES}-byte safety limit`);
-                this.failProtocol(error);
-                return;
-            }
-            const payloadStart = headerEnd + HEADER_SEPARATOR.length;
-            const payloadEnd = payloadStart + contentLength;
-            if (this.buffer.length < payloadEnd)
-                break;
-            const payload = this.buffer.subarray(payloadStart, payloadEnd).toString('utf8');
-            this.buffer = this.buffer.subarray(payloadEnd);
-            let message;
-            try {
-                message = JSON.parse(payload);
-            }
-            catch (error) {
-                const protocolError = new DapError(`Failed to parse DAP JSON payload: ${payload.slice(0, 500)}`, {
-                    cause: error instanceof Error ? error : undefined,
-                });
-                this.failProtocol(protocolError);
-                return;
-            }
-            try {
-                this.handleMessage(message);
-            }
-            catch (error) {
-                const protocolError = error instanceof DapError
-                    ? error
-                    : new DapError(`Failed to handle DAP message type '${String(message?.type)}'`, {
+                const headerText = this.buffer.subarray(0, headerEnd).toString('ascii');
+                const lengthMatches = [...headerText.matchAll(/(?:^|\r\n)Content-Length:\s*(\d+)\s*(?=\r\n|$)/gi)];
+                const contentLengthText = lengthMatches[0]?.[1];
+                if (!contentLengthText || lengthMatches.length !== 1) {
+                    const error = new DapError(lengthMatches.length > 1
+                        ? 'Invalid DAP header: multiple Content-Length fields are not allowed'
+                        : `Invalid DAP header: ${headerText.slice(0, 500)}`);
+                    this.failProtocol(error);
+                    return;
+                }
+                const contentLength = Number.parseInt(contentLengthText, 10);
+                if (!Number.isSafeInteger(contentLength) || contentLength < 0 || contentLength > MAX_DAP_PAYLOAD_BYTES) {
+                    const error = new DapError(`DAP Content-Length ${contentLengthText} exceeds the ${MAX_DAP_PAYLOAD_BYTES}-byte safety limit`);
+                    this.failProtocol(error);
+                    return;
+                }
+                const payloadStart = headerEnd + HEADER_SEPARATOR.length;
+                const payloadEnd = payloadStart + contentLength;
+                if (this.buffer.length < payloadEnd)
+                    break;
+                const payload = this.buffer.subarray(payloadStart, payloadEnd).toString('utf8');
+                this.buffer = this.buffer.subarray(payloadEnd);
+                let message;
+                try {
+                    message = JSON.parse(payload);
+                }
+                catch (error) {
+                    const protocolError = new DapError(`Failed to parse DAP JSON payload: ${payload.slice(0, 500)}`, {
                         cause: error instanceof Error ? error : undefined,
                     });
-                this.failProtocol(protocolError);
-                return;
-            }
+                    this.failProtocol(protocolError);
+                    return;
+                }
+                try {
+                    this.handleMessage(message);
+                }
+                catch (error) {
+                    const protocolError = error instanceof DapError
+                        ? error
+                        : new DapError(`Failed to handle DAP message type '${String(message?.type)}'`, {
+                            cause: error instanceof Error ? error : undefined,
+                        });
+                    this.failProtocol(protocolError);
+                    return;
+                }
             }
         }
     }
@@ -506,7 +506,7 @@ export class DapConnection extends EventEmitter {
     captureStderr(chunk) {
         const lines = chunk.split(/\r?\n/).filter(Boolean).slice(-100)
             .map((line) => line.length > MAX_STDERR_LINE_CHARS
-                ? line.slice(0, MAX_STDERR_LINE_CHARS) + '… [truncated]' : line);
+            ? line.slice(0, MAX_STDERR_LINE_CHARS) + '… [truncated]' : line);
         this.stderrLines.push(...lines);
         if (this.stderrLines.length > 100) {
             this.stderrLines.splice(0, this.stderrLines.length - 100);
