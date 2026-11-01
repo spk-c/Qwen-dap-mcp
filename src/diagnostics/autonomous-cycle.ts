@@ -546,7 +546,7 @@ export function advanceAutonomousCycle(previous: AutonomousAgentState, verificat
     const nextIteration = previous.iteration + 1;
     const nextBaseline = currentDiagnosis.verificationBaseline;
     const nextFingerprint = baselineFingerprint(nextBaseline);
-    const interimState = {
+    const interimState: AutonomousAgentState = {
         ...previous,
         iteration: nextIteration,
         status: evidenceReady(currentDiagnosis) ? 'retry-fix' : 'needs-evidence',
