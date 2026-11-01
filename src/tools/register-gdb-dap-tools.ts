@@ -1,3 +1,5 @@
+import type { McpServer } from '@modelcontextprotocol/server';
+import type { GuardedDapSession } from '../dap/guarded-session.js';
 import * as z from 'zod/v4';
 import { buildGdbDapLaunchConfiguration, buildGdbDapPidAttachConfiguration, buildGdbDapRemoteAttachConfiguration, discoverGdbDap, resolveGdbDapRemoteEndpoint, } from '../adapters/gdb-dap.js';
 import { REMOTE_DEBUG_HOSTS_ENV } from '../remote-endpoint.js';
@@ -22,7 +24,7 @@ function wrap(handler) {
         }
     };
 }
-export function registerGdbDapTools(server, session) {
+export function registerGdbDapTools(server: McpServer, session: GuardedDapSession) {
     server.registerTool('debug_gdb_info', {
         title: 'Locate GDB DAP',
         description: 'Locate and version-check a local GDB executable with the built-in DAP interpreter. Use this to verify GDB >= 14 discovery before starting a GNU debugger session; it only probes the local executable and does not launch or attach a debuggee.',
