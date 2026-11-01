@@ -1,5 +1,5 @@
 import { DapConnection } from './connection.js';
-import { DapError, DapTimeoutError } from './errors.js';
+import { DapError, DapRequestError, DapTimeoutError } from './errors.js';
 import { assessSymbolHealth } from './symbol-health.js';
 const MAX_READ_MEMORY_BYTES = 1024 * 1024;
 const MAX_DISASSEMBLY_INSTRUCTIONS = 10_000;
@@ -267,8 +267,26 @@ export class DapSession {
             ...(start === undefined ? {} : { start }),
             ...(count === undefined ? {} : { count }),
         };
-        const response = await this.connection.sendRequest('variables', args, this.requestTimeoutMs);
-        return (response.body?.variables ?? []);
+        try {
+            const response = await this.connection.sendRequest('variables', args, this.requestTimeoutMs);
+            return (response.body?.variables ?? []);
+        }
+        catch (error) {
+            // GDB 15's DAP implementation can throw "list index out of range"
+            // when the requested variables page extends beyond available
+            // entries. Retry without paging and slice locally in that case.
+            // Do not swallow unrelated debugger/transport errors.
+            if (this.adapterId !== 'gdb'
+                || (start === undefined && count === undefined)
+                || !(error instanceof DapRequestError)
+                || !/list index out of range/i.test(error.message)) {
+                throw error;
+            }
+            const response = await this.connection.sendRequest('variables', { variablesReference }, this.requestTimeoutMs);
+            const variables = response.body?.variables ?? [];
+            const from = start ?? 0;
+            return variables.slice(from, count === undefined ? undefined : from + count);
+        }
     }
     async evaluate(expression, frameId, context = 'watch') {
         this.assertConfigured();

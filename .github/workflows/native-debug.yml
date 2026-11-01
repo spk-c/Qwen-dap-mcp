@@ -1,0 +1,84 @@
+name: Native debugger end-to-end
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  native-linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        adapter: [gdb, lldb-dap]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install system native debuggers
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends gdb lldb-18 clang-18 g++
+      - name: Build C++ fixture with symbols
+        run: |
+          mkdir -p integration/bin
+          g++ -std=c++17 -g -O0 -fno-omit-frame-pointer integration/fixture/native-debug.cpp -o integration/bin/native-debug
+          file integration/bin/native-debug
+      - name: Configure native adapter
+        shell: bash
+        env:
+          TARGET_ADAPTER: ${{ matrix.adapter }}
+        run: |
+          if [ "$TARGET_ADAPTER" = gdb ]; then
+            path=$(command -v gdb)
+            gdb --version | head -1
+          else
+            path=$(command -v lldb-dap-18)
+            "$path" --version || true
+          fi
+          test -n "$path" && test -x "$path"
+          echo "NATIVE_DAP_ADAPTER=$TARGET_ADAPTER" >> "$GITHUB_ENV"
+          echo "NATIVE_DAP_PATH=$path" >> "$GITHUB_ENV"
+          echo "NATIVE_DAP_BINARY=$GITHUB_WORKSPACE/integration/bin/native-debug" >> "$GITHUB_ENV"
+          echo "RUN_NATIVE_DEBUGGER_TESTS=1" >> "$GITHUB_ENV"
+      - run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Execute real DAP integration tests
+        run: node --test integration/native-debug.mjs
+  native-windows-codelldb:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Download CodeLLDB from official GitHub release
+        shell: pwsh
+        run: |
+          $uri = 'https://github.com/vadimcn/codelldb/releases/download/v1.12.3/codelldb-win32-x64.vsix'
+          Invoke-WebRequest -Uri $uri -OutFile codelldb.zip -MaximumRedirection 10
+          Expand-Archive codelldb.zip -DestinationPath codelldb-install -Force
+          $adapter = (Resolve-Path 'codelldb-install/extension/adapter/codelldb.exe').Path
+          Add-Content $env:GITHUB_ENV "NATIVE_DAP_PATH=$adapter"
+          Add-Content $env:GITHUB_ENV "NATIVE_DAP_ADAPTER=codelldb"
+          Add-Content $env:GITHUB_ENV "RUN_NATIVE_DEBUGGER_TESTS=1"
+          Add-Content $env:GITHUB_ENV "NATIVE_DAP_BINARY=$env:GITHUB_WORKSPACE\integration\bin\native-debug.exe"
+      - name: Compile C++ fixture with MSVC debug symbols
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force integration/bin | Out-Null
+          $programFilesX86 = [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
+          $vswhere = Join-Path $programFilesX86 'Microsoft Visual Studio\Installer\vswhere.exe'
+          $vs = & $vswhere -latest -products * -property installationPath
+          if (-not $vs) { throw 'Visual Studio Build Tools not found' }
+          $vcvars = Join-Path $vs 'VC\Auxiliary\Build\vcvars64.bat'
+          $quote = [char]34
+          $cmd = "$quote$vcvars$quote && cl.exe /nologo /std:c++17 /Zi /Od /EHsc integration\fixture\native-debug.cpp /Fe:integration\bin\native-debug.exe /link /DEBUG"
+          cmd /c $cmd
+          if ($LASTEXITCODE -ne 0) { throw "MSVC compile failed: $LASTEXITCODE" }
+      - run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Execute real CodeLLDB integration tests
+        run: node --test integration/native-debug.mjs

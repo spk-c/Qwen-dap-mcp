@@ -15,3 +15,7 @@ Legacy .d.ts declarations and .js.map source maps originate from the compiled up
 - Fail closed on stale asynchronous DAP policy decisions and malformed DAP envelopes, bind response command to request, remove obsolete event waiters, bound stderr history.
 - Added real stdio DAP adapter fixture, protocol integration tests, and more transport regressions.
 - Restricted evidence imports to dedicated extension names and bounded file-descriptor reads with identity checks.
+
+2026-11-01 native debugger integration:
+- Added a compiled C++ fixture and real GDB, LLDB-DAP and CodeLLDB CI jobs.
+- Tests cover source breakpoints, native stack/scopes, optional memory reads, a clean exit, a deliberate crash and adapter cleanup.
