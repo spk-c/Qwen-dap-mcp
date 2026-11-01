@@ -22,12 +22,13 @@
     "test": "node --test",
     "check:package": "node scripts/check-package.mjs",
     "package:extension": "npm run check:package",
-    "check": "npm run build && npm run check:types && npm test && npm run check:docs && npm run check:package",
+    "check": "npm run build && npm run check:types && npm run check:strict-budget && npm test && npm run check:docs && npm run check:package",
     "prepublishOnly": "npm run check",
     "start": "node dist/index.js",
     "check:docs": "node scripts/check-docs.mjs",
     "check:pack": "node scripts/check-package-tarball.mjs",
-    "check:types": "node scripts/check-type-coverage.mjs"
+    "check:types": "node scripts/check-type-coverage.mjs",
+    "check:strict-budget": "node scripts/check-strict-budget.mjs"
   },
   "engines": {
     "node": ">=20"

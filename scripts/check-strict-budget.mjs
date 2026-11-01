@@ -1,0 +1,35 @@
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
+
+// Temporary migration ceiling, tightened whenever a checked-in batch reduces
+// full strict compiler diagnostics. Zero is the acceptance criterion for #24.
+const MAX_STRICT_DIAGNOSTICS = 1008;
+const root = fileURLToPath(new URL('../', import.meta.url));
+const typescript = join(root, 'node_modules', 'typescript', 'bin', 'tsc');
+const result = spawnSync(process.execPath, [
+  typescript, '--project', join(root, 'tsconfig.json'),
+  '--strict', '--noEmit', '--pretty', 'false',
+], { cwd: root, encoding: 'utf8', timeout: 180_000, maxBuffer: 32 * 1024 * 1024 });
+if (result.error) throw result.error;
+const output = (result.stdout ?? '') + '\n' + (result.stderr ?? '');
+const errors = output.split(/\r?\n/).filter((line) => /\berror TS\d+:/.test(line));
+if (result.status !== 0 && errors.length === 0) {
+  throw new Error('Full strict TypeScript probe failed without parseable diagnostics: ' + output.slice(-2000));
+}
+const counts = new Map();
+for (const line of errors) {
+  const code = line.match(/\berror (TS\d+):/)?.[1];
+  if (code) counts.set(code, (counts.get(code) ?? 0) + 1);
+}
+const breakdown = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
+console.log('Full strict TypeScript diagnostic baseline: ' + errors.length +
+  ' (maximum allowed: ' + MAX_STRICT_DIAGNOSTICS + ')');
+console.log('Top diagnostic classes: ' + breakdown.map(([code, n]) => code + '=' + n).join(', '));
+if (errors.length > MAX_STRICT_DIAGNOSTICS) {
+  console.error('Strict TypeScript diagnostic count regressed. Fix the new errors or explicitly review the baseline.');
+  process.exitCode = 1;
+}
+if (errors.length === 0) {
+  console.log('Full strict TypeScript checking passes; remove the temporary budget and enable strict=true in tsconfig.json.');
+}
