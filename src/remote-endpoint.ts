@@ -1,12 +1,12 @@
 import { isIP } from 'node:net';
 import { DapError } from './dap/errors.js';
 export const REMOTE_DEBUG_HOSTS_ENV = 'QWEN_DAP_MCP_REMOTE_DEBUG_HOSTS';
-function stripIpv6Brackets(value) {
+function stripIpv6Brackets(value: string): string {
     if (value.startsWith('[') && value.endsWith(']'))
         return value.slice(1, -1);
     return value;
 }
-export function normalizeRemoteDebugHost(value) {
+export function normalizeRemoteDebugHost(value: string): string {
     const host = stripIpv6Brackets(value.trim()).toLowerCase();
     if (!host)
         throw new DapError('Remote debugger host must not be empty.');
@@ -28,7 +28,7 @@ export function normalizeRemoteDebugHost(value) {
     }
     return host;
 }
-export function isLoopbackRemoteDebugHost(host) {
+export function isLoopbackRemoteDebugHost(host: string): boolean {
     const normalized = normalizeRemoteDebugHost(host);
     if (normalized === 'localhost')
         return true;
@@ -39,11 +39,11 @@ export function isLoopbackRemoteDebugHost(host) {
     }
     return false;
 }
-function configuredRemoteHosts(env) {
+function configuredRemoteHosts(env: NodeJS.ProcessEnv): Set<string> {
     const raw = env[REMOTE_DEBUG_HOSTS_ENV];
     if (!raw?.trim())
-        return new Set();
-    const hosts = new Set();
+        return new Set<string>();
+    const hosts = new Set<string>();
     for (const entry of raw.split(',')) {
         const trimmed = entry.trim();
         if (!trimmed)
@@ -52,7 +52,7 @@ function configuredRemoteHosts(env) {
     }
     return hosts;
 }
-export function assertRemoteDebugHostAllowed(host, env = process.env) {
+export function assertRemoteDebugHostAllowed(host: string, env: NodeJS.ProcessEnv = process.env): string {
     const normalized = normalizeRemoteDebugHost(host);
     if (isLoopbackRemoteDebugHost(normalized))
         return normalized;
@@ -63,7 +63,7 @@ export function assertRemoteDebugHostAllowed(host, env = process.env) {
         + `For an explicitly authorized remote target, add the exact hostname or IP to ${REMOTE_DEBUG_HOSTS_ENV}. `
         + 'Prefer an SSH/VPN tunnel to a loopback endpoint because native debug servers do not provide a general secure transport boundary.');
 }
-export function buildRemoteTcpEndpoint(host, port, env = process.env) {
+export function buildRemoteTcpEndpoint(host: string, port: number, env: NodeJS.ProcessEnv = process.env) {
     if (!Number.isSafeInteger(port) || port < 1 || port > 65535) {
         throw new DapError(`Remote debugger port must be an integer from 1 to 65535; received ${String(port)}.`);
     }
@@ -76,7 +76,7 @@ export function buildRemoteTcpEndpoint(host, port, env = process.env) {
         loopback: isLoopbackRemoteDebugHost(normalizedHost),
     };
 }
-export function parseRemoteTcpTarget(target, env = process.env) {
+export function parseRemoteTcpTarget(target: string, env: NodeJS.ProcessEnv = process.env) {
     const value = target.trim();
     if (!value || /[\u0000-\u001f\u007f]/.test(value)) {
         throw new DapError('Remote debugger target must be a TCP host:port endpoint.');
