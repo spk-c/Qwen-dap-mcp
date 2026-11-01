@@ -14,3 +14,6 @@ coverage/
 .playwright-mcp/
 .qwen/settings.json
 .qwen/*.log
+
+integration/bin/
+*.pdb
