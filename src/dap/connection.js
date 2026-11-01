@@ -9,6 +9,7 @@ const HEADER_SEPARATOR = Buffer.from('\r\n\r\n');
 const MAX_EVENT_HISTORY = 200;
 const MAX_HEADER_BYTES = 64 * 1024;
 const MAX_DAP_PAYLOAD_BYTES = 16 * 1024 * 1024;
+const MAX_STDERR_LINE_CHARS = 4096;
 const TERMINATE_GRACE_MS = 1_000;
 const KILL_GRACE_MS = 2_000;
 function childHasExited(child) {
@@ -188,6 +189,8 @@ export class DapConnection extends EventEmitter {
         }
     }
     async sendRequest(command, args, timeoutMs = 15_000) {
+        const authorizedChild = this.child;
+        const authorizedGeneration = this.transportGeneration;
         const operation = currentDapOperationContext();
         operation?.throwIfAborted();
         let decision;
@@ -201,7 +204,10 @@ export class DapConnection extends EventEmitter {
             });
         }
         operation?.throwIfAborted();
-        if (!decision.allow) {
+        if (this.child !== authorizedChild || this.transportGeneration !== authorizedGeneration) {
+            throw new DapError(`DAP adapter changed while authorizing '${command}'; retry against the current session.`);
+        }
+        if (!decision || decision.allow !== true) {
             logger.warn('Blocked outgoing DAP request by policy', { command, reason: decision.reason });
             throw new DapError(`DAP request '${command}' blocked by policy: ${decision.reason}`);
         }
@@ -255,7 +261,7 @@ export class DapConnection extends EventEmitter {
             }
         });
     }
-    waitForEvent(eventName, timeoutMs = 15_000, predicate, includeRecent = false) {
+    waitForEvent(eventName, timeoutMs = 15_000, predicate, includeRecent = false, signal) {
         const operation = currentDapOperationContext();
         operation?.throwIfAborted();
         const effectiveTimeoutMs = operation?.remainingMs(timeoutMs) ?? timeoutMs;
@@ -291,12 +297,14 @@ export class DapConnection extends EventEmitter {
                 this.off('adapterExit', onAdapterExit);
                 this.off('adapterError', onAdapterError);
                 operation?.signal.removeEventListener('abort', onAbort);
+                signal?.removeEventListener('abort', onAbort);
             };
             this.on(eventKey, handler);
             this.on('adapterExit', onAdapterExit);
             this.on('adapterError', onAdapterError);
             operation?.signal.addEventListener('abort', onAbort, { once: true });
-            if (operation?.signal.aborted) {
+            signal?.addEventListener('abort', onAbort, { once: true });
+            if (operation?.signal.aborted || signal?.aborted) {
                 onAbort();
                 return;
             }
@@ -399,7 +407,7 @@ export class DapConnection extends EventEmitter {
             catch (error) {
                 const protocolError = error instanceof DapError
                     ? error
-                    : new DapError(`Failed to handle DAP message type '${String(message.type)}'`, {
+                    : new DapError(`Failed to handle DAP message type '${String(message?.type)}'`, {
                         cause: error instanceof Error ? error : undefined,
                     });
                 this.failProtocol(protocolError);
@@ -409,13 +417,24 @@ export class DapConnection extends EventEmitter {
         }
     }
     handleMessage(message) {
+        if (message === null || typeof message !== 'object' || Array.isArray(message)
+            || !['response', 'event', 'request'].includes(message.type)) {
+            throw new DapError('Invalid DAP message envelope: expected a response, event, or reverse request object.');
+        }
         if (message.type === 'response') {
+            if (!Number.isSafeInteger(message.request_seq) || message.request_seq < 1
+                || typeof message.command !== 'string' || typeof message.success !== 'boolean') {
+                throw new DapError('Invalid DAP response envelope.');
+            }
             const response = message;
             const pending = this.pending.get(response.request_seq);
             if (!pending) {
                 logger.debug('Received orphan DAP response', { requestSeq: response.request_seq, command: response.command });
                 this.emit('orphanResponse', response);
                 return;
+            }
+            if (pending.command !== response.command) {
+                throw new DapError(`DAP response command mismatch: request '${pending.command}', response '${response.command}'.`);
             }
             if (pending.generation !== this.transportGeneration) {
                 pending.cleanup();
@@ -440,6 +459,8 @@ export class DapConnection extends EventEmitter {
             return;
         }
         if (message.type === 'event') {
+            if (typeof message.event !== 'string' || !message.event)
+                throw new DapError('Invalid DAP event envelope.');
             const event = message;
             const record = {
                 receivedAt: new Date().toISOString(),
@@ -455,6 +476,9 @@ export class DapConnection extends EventEmitter {
             return;
         }
         if (message.type === 'request') {
+            if (!Number.isSafeInteger(message.seq) || message.seq < 1
+                || typeof message.command !== 'string' || !message.command)
+                throw new DapError('Invalid DAP reverse request envelope.');
             const request = message;
             this.reverseRequestHistory.push({
                 receivedAt: new Date().toISOString(),
@@ -480,7 +504,9 @@ export class DapConnection extends EventEmitter {
         this.writeMessage(response);
     }
     captureStderr(chunk) {
-        const lines = chunk.split(/\r?\n/).filter(Boolean);
+        const lines = chunk.split(/\r?\n/).filter(Boolean).slice(-100)
+            .map((line) => line.length > MAX_STDERR_LINE_CHARS
+                ? line.slice(0, MAX_STDERR_LINE_CHARS) + '… [truncated]' : line);
         this.stderrLines.push(...lines);
         if (this.stderrLines.length > 100) {
             this.stderrLines.splice(0, this.stderrLines.length - 100);
