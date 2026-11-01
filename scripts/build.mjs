@@ -23,8 +23,11 @@ function mirrorGeneratedJs(dir, relative = '') {
     const lines = readFileSync(next, 'utf8').split('\n');
     if (lines[0]?.startsWith('#!') && lines[1] === '// @ts-nocheck') lines.splice(1, 1);
     else if (lines[0] === '// @ts-nocheck') lines.shift();
-    writeFileSync(next, lines.join('\n'));
     const sourceJs = join(source, rel);
+    // Pre-migration compiled files lacked a final newline. Preserve that
+    // formatting byte-for-byte instead of dirtying all generated JS files.
+    if (existsSync(sourceJs) && !readFileSync(sourceJs, 'utf8').endsWith('\n') && lines.at(-1) === '') lines.pop();
+    writeFileSync(next, lines.join('\n'));
     mkdirSync(join(source, relative), { recursive: true });
     copyFileSync(next, sourceJs);
     count++;
