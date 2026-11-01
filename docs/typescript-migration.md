@@ -15,3 +15,5 @@ The initial migration left 14 modules under `// @ts-nocheck`. The follow-up now 
 The DAP transport uses the published `@vscode/debugprotocol` response/event interfaces. Its `body` is intentionally dynamic at the protocol boundary, while operation deadlines, request-local session ownership, HOL Guard configuration, rr options, hang observations, runtime snapshot bounds and report structures now have explicit types.
 
 **Partial strict checking is enforced in CI.** `strictFunctionTypes`, `strictBindCallApply`, `alwaysStrict`, and `useUnknownInCatchVariables` are enabled. The current `tsconfig.json` still has `strict: false` because a complete strict pass reported 1,084 compiler diagnostics, mostly implicit `any` from the npm-derived code. No one should confuse removal of opt-outs with a passing full `strict: true` compile. Strengthen remaining API surfaces, turn on strict flags only after compiler errors are fixed, and keep all real debugger/MCP integration checks as release gates.
+
+Track the final full-strict conversion in [issue #24](https://github.com/spk-c/Qwen-dap-mcp/issues/24), including implicit-any parameter coverage and inferred empty-array types.
