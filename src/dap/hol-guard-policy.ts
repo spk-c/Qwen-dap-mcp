@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { accessSync, constants, existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
