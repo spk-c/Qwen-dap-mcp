@@ -1,10 +1,14 @@
-// @ts-nocheck
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { DapError } from './errors.js';
 const DEADLINE_ABORT_SKEW_MS = 5;
 let nextOperationId = 0;
-const operationStorage = new AsyncLocalStorage();
-function abortReason(signal) {
+export type DapOperationOptions = {
+    label?: string;
+    timeoutMs?: number;
+    signal?: AbortSignal;
+};
+const operationStorage = new AsyncLocalStorage<DapOperationContext>();
+function abortReason(signal: AbortSignal): string {
     const reason = signal.reason;
     if (reason instanceof Error)
         return reason.message;
@@ -13,14 +17,14 @@ function abortReason(signal) {
     return 'operation cancelled';
 }
 export class DapOperationContext {
-    id;
-    label;
-    signal;
-    deadlineAt;
+    id: number;
+    label: string;
+    signal: AbortSignal;
+    deadlineAt: number | undefined;
     controller = new AbortController();
-    timeout;
-    detachParent;
-    constructor(options = {}, parent) {
+    timeout?: ReturnType<typeof setTimeout>;
+    detachParent?: () => void;
+    constructor(options: DapOperationOptions = {}, parent?: DapOperationContext) {
         this.id = ++nextOperationId;
         this.label = options.label?.trim() || `operation-${this.id}`;
         const now = Date.now();
@@ -35,13 +39,13 @@ export class DapOperationContext {
                 : Math.min(explicitDeadline, parentDeadline);
         this.signal = this.controller.signal;
         // A child's explicit signal must not mask cancellation from its parent.
-        const inheritedSignals = new Set();
+        const inheritedSignals = new Set<AbortSignal>();
         if (parent)
             inheritedSignals.add(parent.signal);
         if (options.signal)
             inheritedSignals.add(options.signal);
         if (inheritedSignals.size > 0) {
-            const detachListeners = [];
+            const detachListeners: Array<() => void> = [];
             for (const inheritedSignal of inheritedSignals) {
                 const onAbort = () => this.abort(abortReason(inheritedSignal));
                 inheritedSignal.addEventListener('abort', onAbort, { once: true });
@@ -64,7 +68,7 @@ export class DapOperationContext {
             }, delay);
         }
     }
-    remainingMs(requestedMs) {
+    remainingMs(requestedMs: number): number {
         const boundedRequested = Math.max(1, requestedMs);
         if (this.deadlineAt === undefined)
             return boundedRequested;
@@ -75,7 +79,7 @@ export class DapOperationContext {
             return;
         throw new DapError(`DAP ${this.label} cancelled: ${abortReason(this.signal)}`);
     }
-    abort(reason = 'operation cancelled') {
+    abort(reason: string = 'operation cancelled'): void {
         if (this.signal.aborted)
             return;
         this.controller.abort(new DapError(reason));
@@ -86,10 +90,13 @@ export class DapOperationContext {
         this.detachParent?.();
     }
 }
-export function currentDapOperationContext() {
+export function currentDapOperationContext(): DapOperationContext | undefined {
     return operationStorage.getStore();
 }
-export async function runWithDapOperationContext(options, action) {
+export async function runWithDapOperationContext<T>(
+    options: DapOperationOptions,
+    action: (context: DapOperationContext) => T | Promise<T>,
+): Promise<T> {
     const context = new DapOperationContext(options, currentDapOperationContext());
     try {
         context.throwIfAborted();
