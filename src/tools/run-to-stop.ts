@@ -1,15 +1,32 @@
+import type { DebugProtocol } from '@vscode/debugprotocol';
+import type { EventEmitter } from 'node:events';
+import type { RuntimeSnapshot, RuntimeSnapshotOptions, DapBreakpointGroup } from '../dap/session.js';
+export type RunToStopRequest = 'launch' | 'attach';
+export type RunToStopSession = {
+    connection: Pick<EventEmitter, 'on' | 'off'>;
+    runExclusiveLifecycle<T>(operation: string, action: () => T | Promise<T>): Promise<T>;
+    isPostmortem(): boolean;
+    launch(configuration: Record<string, unknown>, breakpoints?: DapBreakpointGroup[]): Promise<unknown>;
+    attach(configuration: Record<string, unknown>, breakpoints?: DapBreakpointGroup[]): Promise<unknown>;
+    runtimeSnapshot(options?: RuntimeSnapshotOptions): Promise<RuntimeSnapshot>;
+    snapshot(): unknown;
+};
+export type RunToStopOptions = {
+    request?: RunToStopRequest; configuration: Record<string, unknown>;
+    breakpoints?: DapBreakpointGroup[]; timeoutMs?: number; snapshot?: RuntimeSnapshotOptions;
+};
 import * as z from 'zod/v4';
 import { DapError, DapTimeoutError } from '../dap/errors.js';
 import { LOCAL_TARGET_EXECUTION_ANNOTATIONS } from './tool-annotations.js';
 import { debugRunToStopOutputSchema, structuredResult } from './agent-output.js';
 const OUTCOME_EVENTS = new Set(['stopped', 'exited', 'terminated']);
-function createOutcomeWait(session, timeoutMs) {
+function createOutcomeWait(session: RunToStopSession, timeoutMs: number) {
     let active = true;
-    let resolvePromise;
-    let handler;
-    let onAdapterExit;
-    let onAdapterError;
-    let timer;
+    let resolvePromise!: (event: DebugProtocol.Event | undefined) => void;
+    let handler!: (event: DebugProtocol.Event) => void;
+    let onAdapterExit!: (detail: unknown) => void;
+    let onAdapterError!: (error: unknown) => void;
+    let timer!: ReturnType<typeof setTimeout>;
     const cleanup = () => {
         if (!active)
             return;
@@ -19,19 +36,19 @@ function createOutcomeWait(session, timeoutMs) {
         session.connection.off('adapterExit', onAdapterExit);
         session.connection.off('adapterError', onAdapterError);
     };
-    const promise = new Promise<{event: string; body?: {threadId?: number}} | undefined>((resolve, reject) => {
+    const promise = new Promise<DebugProtocol.Event | undefined>((resolve, reject) => {
         resolvePromise = resolve;
-        handler = (event) => {
+        handler = (event: DebugProtocol.Event) => {
             if (!OUTCOME_EVENTS.has(event.event))
                 return;
             cleanup();
             resolve(event);
         };
-        onAdapterExit = (detail) => {
+        onAdapterExit = (detail: unknown) => {
             cleanup();
             reject(new DapError(`DAP adapter exited before stopped/exited/terminated was observed: ${JSON.stringify(detail ?? {})}`));
         };
-        onAdapterError = (error) => {
+        onAdapterError = (error: unknown) => {
             cleanup();
             reject(error instanceof Error ? error : new DapError('DAP adapter failed while waiting for stopped/exited/terminated.'));
         };
@@ -53,7 +70,7 @@ function createOutcomeWait(session, timeoutMs) {
         },
     };
 }
-export async function runToStop(session, options) {
+export async function runToStop(session: RunToStopSession, options: RunToStopOptions) {
     const request = options.request ?? 'launch';
     const breakpoints = options.breakpoints ?? [];
     const timeoutMs = options.timeoutMs ?? 30_000;
@@ -130,14 +147,14 @@ const snapshotSchema = z.object({
     moduleCount: z.number().int().positive().max(500).optional().describe('Maximum loaded modules to include.'),
     includeExceptionInfo: z.boolean().optional().describe('Whether to request structured exception information after a stop.'),
 }).describe('Optional bounds and evidence categories for the snapshot captured only when execution stops.');
-function result(value) {
+function result(value: unknown) {
     return structuredResult(value);
 }
-function errorResult(error) {
+function errorResult(error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     return { content: [{ type: 'text', text: message }], isError: true };
 }
-export function registerRunToStopTool(server, session) {
+export function registerRunToStopTool(server, session: RunToStopSession) {
     server.registerTool('debug_run_to_stop', {
         title: 'Run Until Debug Stop or Exit',
         description: 'Run one live launch or attach through an already initialized DAP adapter until the first stopped, exited, or terminated event. Use this when you need deterministic runtime evidence from a reproduction; do not use it for a postmortem dump or when executing/attaching to the local target is not authorized. Launch mode executes application code and attach mode changes debugger control of an existing process, so normal target side effects may occur before the stop. Returns the request result, terminal/stopped outcome, session status, and a bounded snapshot only when a stopped event is captured.',
