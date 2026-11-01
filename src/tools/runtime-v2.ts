@@ -42,9 +42,8 @@ function errorResult(error: unknown) {
     return { content: [{ type: 'text' as const, text: message }], isError: true };
 }
 function debuggerOutput(session: GuardedDapSession): string[] {
-    const status = session.snapshot();
-    const dapEvents: DapEventRecord[] = status.recentEvents;
-    const dap = dapEvents
+    const status: { recentEvents: DapEventRecord[]; recentAdapterStderr: string[] } = session.snapshot();
+    const dap = status.recentEvents
         .filter((record) => record.event === 'output')
         .map((record) => {
         const body = record.body;
