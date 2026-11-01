@@ -1,5 +1,3 @@
-import type { McpServer } from '@modelcontextprotocol/server';
-import type { GuardedDapSession } from '../dap/guarded-session.js';
 import * as z from 'zod/v4';
 import { buildCodeLldbAttachConfiguration, buildCodeLldbLaunchConfiguration, discoverCodeLldb, } from '../adapters/codelldb.js';
 import { DapError } from '../dap/errors.js';
@@ -82,7 +80,7 @@ export function formatMemoryResult(memory, requestedCount) {
     const hex = bytes.toString('hex').match(/.{1,2}/g)?.join(' ');
     return { ...memory, ...(hex ? { hex } : {}) };
 }
-export function registerDebugTools(server: McpServer, session: GuardedDapSession) {
+export function registerDebugTools(server, session) {
     server.registerTool('debug_codelldb_info', {
         title: 'Locate CodeLLDB',
         description: 'Locate a CodeLLDB >= 1.11.0 adapter from an explicit path, CODELLDB_PATH, common VS Code-compatible extension directories, or PATH.',
