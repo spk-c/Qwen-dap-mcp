@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { resolveExistingDirectory } from '../local-path.js';
