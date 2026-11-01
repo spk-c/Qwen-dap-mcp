@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { DapConnection } from './connection.js';
 import { DapError, DapRequestError, DapTimeoutError } from './errors.js';
 import { assessSymbolHealth } from './symbol-health.js';
