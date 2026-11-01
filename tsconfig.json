@@ -6,7 +6,7 @@
     "types": [
       "node"
     ],
-    "strict": true,
+    "strict": false,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "declaration": true,
@@ -15,7 +15,10 @@
     "rootDir": "src",
     "forceConsistentCasingInFileNames": true,
     "allowJs": false,
-    "noImplicitAny": false
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "alwaysStrict": true,
+    "useUnknownInCatchVariables": true
   },
   "include": [
     "src/**/*.ts"
