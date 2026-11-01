@@ -321,7 +321,16 @@ export function registerRuntimeV2Tools(server, session) {
                 const output = debuggerOutput(session);
                 const sanitizer = parseSanitizerEvidence(output);
                 const hazards = detectMemoryHazards(initial).filter((item) => item.variable === observed?.name || String(item.value ?? '') === observed?.value);
-                const result = {
+                const result: {
+                    query: string;
+                    initial: {frame: typeof initial.frame; observed: typeof observed};
+                    sanitizer: typeof sanitizer;
+                    memoryHazards: typeof hazards;
+                    allocationDeallocationHints: string[];
+                    reverseTimeline?: Awaited<ReturnType<typeof reverseLifetime>>;
+                    forwardTimeline?: Awaited<ReturnType<typeof traceValue>>;
+                    guidance?: string[];
+                } = {
                     query: args.name,
                     initial: { frame: initial.frame, observed },
                     sanitizer,
@@ -598,7 +607,11 @@ export function registerRuntimeV2Tools(server, session) {
             mode: z.enum(['current', 'installed', 'all']).default('all').describe('Audit the current initialized DAP session, local adapter installations, or both.'),
         }),
     }, async ({ mode }) => {
-        const result = { security: securityProfileSnapshot() };
+        const result: {
+            security: ReturnType<typeof securityProfileSnapshot>;
+            current?: {status: ReturnType<typeof session.snapshot>; capabilityMatrix: Record<string, boolean>};
+            installed?: ReturnType<typeof installedAdapter>[];
+        } = { security: securityProfileSnapshot() };
         if (mode === 'current' || mode === 'all') {
             const status = session.snapshot();
             const capabilities = status.capabilities ?? {};
