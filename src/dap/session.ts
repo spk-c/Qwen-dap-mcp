@@ -1,6 +1,17 @@
 import { DapConnection } from './connection.js';
 import { DapError, DapRequestError, DapTimeoutError } from './errors.js';
 import { assessSymbolHealth } from './symbol-health.js';
+export type RuntimeSnapshotOptions = {
+    threadId?: number;
+    stackLevels?: number;
+    maxVariablesPerScope?: number;
+    includeDisassembly?: boolean;
+    disassembleBefore?: number;
+    disassembleAfter?: number;
+    includeModules?: boolean;
+    moduleCount?: number;
+    includeExceptionInfo?: boolean;
+};
 const MAX_READ_MEMORY_BYTES = 1024 * 1024;
 const MAX_DISASSEMBLY_INSTRUCTIONS = 10_000;
 const MAX_RELATIVE_DAP_OFFSET = 2_147_483_647;
@@ -323,7 +334,7 @@ export class DapSession {
         const response = await this.connection.sendRequest('exceptionInfo', { threadId }, this.requestTimeoutMs);
         return (response.body ?? { exceptionId: 'unknown', breakMode: 'unhandled' });
     }
-    async runtimeSnapshot(options = {}) {
+    async runtimeSnapshot(options: RuntimeSnapshotOptions = {}) {
         this.assertConfigured();
         const threadList = await this.threads();
         if (threadList.length === 0)
@@ -550,7 +561,7 @@ export class DapSession {
             this.connection.off('adapterExit', onAdapterExit);
             this.connection.off('adapterError', onAdapterError);
         };
-        const finish = (event, error) => {
+        const finish = (event: any, error?: Error) => {
             if (!active)
                 return;
             active = false;
