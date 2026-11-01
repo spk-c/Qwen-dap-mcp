@@ -2,6 +2,25 @@ import { DapConnection } from './connection.js';
 import type { DebugProtocol } from '@vscode/debugprotocol';
 import { DapError, DapRequestError, DapTimeoutError } from './errors.js';
 import { assessSymbolHealth } from './symbol-health.js';
+export type RuntimeSnapshotCollectionError = {
+    operation: 'locals' | 'registers' | 'disassembly' | 'modules' | 'exceptionInfo';
+    message: string;
+};
+export type RuntimeSnapshot = {
+    postmortem?: boolean;
+    stopped?: DebugProtocol.StoppedEvent['body'];
+    thread: DebugProtocol.Thread;
+    stack: DebugProtocol.StackFrame[];
+    frame: DebugProtocol.StackFrame;
+    scopes: DebugProtocol.Scope[];
+    locals: DebugProtocol.Variable[];
+    registers: DebugProtocol.Variable[];
+    symbolHealth: ReturnType<typeof assessSymbolHealth>;
+    disassembly?: DebugProtocol.DisassembledInstruction[];
+    modules?: DebugProtocol.Module[];
+    exception?: DebugProtocol.ExceptionInfoResponse['body'];
+    collectionErrors?: RuntimeSnapshotCollectionError[];
+};
 export type RuntimeSnapshotOptions = {
     threadId?: number;
     stackLevels?: number;
@@ -344,7 +363,7 @@ export class DapSession {
         const response = await this.connection.sendRequest('exceptionInfo', { threadId }, this.requestTimeoutMs);
         return (response.body ?? { exceptionId: 'unknown', breakMode: 'unhandled' });
     }
-    async runtimeSnapshot(options: RuntimeSnapshotOptions = {}) {
+    async runtimeSnapshot(options: RuntimeSnapshotOptions = {}): Promise<RuntimeSnapshot> {
         this.assertConfigured();
         const threadList = await this.threads();
         if (threadList.length === 0)
@@ -360,12 +379,12 @@ export class DapSession {
             throw new DapError(`Thread ${thread.id} has no stack frame for debug_snapshot.`);
         const frameScopes = await this.scopes(frame.id);
         const maxVariables = options.maxVariablesPerScope ?? 100;
-        const collectionErrors = [];
+        const collectionErrors: RuntimeSnapshotCollectionError[] = [];
         const localScopes = frameScopes
             .filter((scope) => /locals?|arguments?|parameters?/i.test(scope.name))
             .slice(0, 3);
         const registersScope = frameScopes.find((scope) => /register/i.test(scope.name));
-        const localVariables = [];
+        const localVariables: DebugProtocol.Variable[] = [];
         for (const scope of localScopes) {
             if (scope.variablesReference <= 0)
                 continue;
