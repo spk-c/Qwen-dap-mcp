@@ -1,4 +1,3 @@
-// @ts-nocheck
 import * as z from 'zod/v4';
 import { buildCodeLldbLaunchConfiguration, discoverCodeLldb } from '../adapters/codelldb.js';
 import { buildGdbDapLaunchConfiguration, discoverGdbDap } from '../adapters/gdb-dap.js';
