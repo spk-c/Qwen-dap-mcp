@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { GuardedDapSession } from '../src/dap/guarded-session.js';
 import { openDump } from '../src/tools/register-dump-tools.js';
+import { discoverGdbDap } from '../src/adapters/gdb-dap.js';
 
 const run = process.env.RUN_POSTMORTEM_TESTS === '1';
 const adapter = process.env.NATIVE_DAP_ADAPTER;
@@ -21,11 +22,17 @@ test('open a real core in inspect-only policy and reject resume', {skip: !run, t
     holGuardEvaluator: {enabled: false, evaluate: async () => ({allow: true})}
   });
   try {
-    const evidence = await openDump(session, {
+    const settings = {
       adapter, adapterPath, dumpPath: core, program: binary,
       requestTimeoutMs: 25000, includeDisassembly: false,
       includeModules: false, stackLevels: 20, maxVariablesPerScope: 20
-    });
+    };
+    if (adapter === 'gdb' && discoverGdbDap({explicitPath: adapterPath}).version.major < 16) {
+      await assert.rejects(openDump(session, settings), /GDB 16\+/);
+      assert.equal(session.connection.isRunning, false, 'Unsupported GDB must not spawn');
+      return;
+    }
+    const evidence = await openDump(session, settings);
     assert.equal(evidence.mode, 'postmortem');
     assert.equal(evidence.readOnlyTarget, true);
     assert.equal(session.isPostmortem(), true);
