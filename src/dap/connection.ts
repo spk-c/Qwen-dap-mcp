@@ -269,7 +269,7 @@ export class DapConnection extends EventEmitter {
         const operation = currentDapOperationContext();
         operation?.throwIfAborted();
         const effectiveTimeoutMs = operation?.remainingMs(timeoutMs) ?? timeoutMs;
-        return new Promise((resolve, reject) => {
+        return new Promise<DebugProtocol.Event>((resolve, reject) => {
             const eventKey = `event:${eventName}`;
             const handler = (event) => {
                 if (predicate && !predicate(event))
