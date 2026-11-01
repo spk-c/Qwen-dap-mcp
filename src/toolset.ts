@@ -1,0 +1,152 @@
+import { logger } from './logger.js';
+import { resolveSecurityProfile, securityProfileDefaults } from './security-profile.js';
+import { DEBUG_SESSION_CONTROL_ANNOTATIONS, LOCAL_TARGET_EXECUTION_ANNOTATIONS, READ_ONLY_LOCAL_TOOL_ANNOTATIONS, SESSION_TEARDOWN_ANNOTATIONS, } from './tools/tool-annotations.js';
+export const AGENT_TOOL_NAMES = new Set([
+    'debug_this_crash',
+    'debug_this_hang',
+    'debug_compare_runs',
+    'debug_trace_value',
+    'debug_causal_trace',
+    'debug_progress_probe',
+    'debug_runtime_report',
+    'debug_trace_lifetime',
+    'debug_adaptive_evidence',
+    'debug_diagnose_stop',
+    'debug_source_disassembly',
+    'debug_find_writer',
+    'debug_run_to_stop',
+    'debug_open_dump',
+    'debug_snapshot',
+    'debug_status',
+    'debug_disconnect',
+    'debug_sessions',
+]);
+export const FORENSICS_TOOL_NAMES = new Set([
+    ...AGENT_TOOL_NAMES,
+    'debug_reverse_execution',
+    'debug_cluster_crashes',
+    'debug_regression_oracle',
+    'debug_child_requests',
+    'debug_adopt_child',
+    'debug_time_travel',
+    'debug_thread_timeline',
+    'debug_symbol_doctor',
+    'debug_dump_batch',
+    'debug_crash_families',
+    'debug_cpp_object',
+    'debug_evidence_bundle',
+    'debug_adapter_doctor',
+]);
+const LOCAL_EXECUTION_TOOLS = new Set([
+    'debug_start',
+    'debug_start_codelldb',
+    'debug_launch',
+    'debug_launch_codelldb',
+    'debug_attach',
+    'debug_attach_codelldb',
+]);
+const SESSION_CONTROL_TOOLS = new Set([
+    'debug_set_breakpoints',
+    'debug_set_source_breakpoints',
+    'debug_set_function_breakpoints',
+    'debug_set_instruction_breakpoints',
+    'debug_set_data_breakpoints',
+    'debug_set_exception_breakpoints',
+    'debug_pause',
+    'debug_continue',
+    'debug_step',
+    'debug_evaluate',
+]);
+const READ_ONLY_FULL_TOOLS = new Set([
+    'debug_codelldb_info',
+    'debug_data_breakpoint_info',
+    'debug_threads',
+    'debug_stack',
+    'debug_scopes',
+    'debug_variables',
+    'debug_modules',
+    'debug_disassemble',
+    'debug_read_memory',
+    'debug_exception_info',
+    'debug_events',
+]);
+const FILTERED_TOOL_HANDLE = Object.freeze({
+    disable: () => undefined,
+    enable: () => undefined,
+    update: (..._args) => undefined,
+    remove: () => undefined,
+});
+function defaultAnnotationsForTool(name) {
+    if (name === 'debug_disconnect' || name === 'debug_sessions')
+        return SESSION_TEARDOWN_ANNOTATIONS;
+    if (name === 'debug_compare_runs')
+        return READ_ONLY_LOCAL_TOOL_ANNOTATIONS;
+    if (name === 'debug_trace_value' || name === 'debug_causal_trace' || name === 'debug_progress_probe' || name === 'debug_reverse_execution')
+        return DEBUG_SESSION_CONTROL_ANNOTATIONS;
+    if (name === 'debug_runtime_report' || name === 'debug_cluster_crashes' || name === 'debug_regression_oracle' || name === 'debug_child_requests')
+        return READ_ONLY_LOCAL_TOOL_ANNOTATIONS;
+    if (LOCAL_EXECUTION_TOOLS.has(name))
+        return LOCAL_TARGET_EXECUTION_ANNOTATIONS;
+    if (SESSION_CONTROL_TOOLS.has(name))
+        return DEBUG_SESSION_CONTROL_ANNOTATIONS;
+    if (READ_ONLY_FULL_TOOLS.has(name))
+        return READ_ONLY_LOCAL_TOOL_ANNOTATIONS;
+    return undefined;
+}
+function withBehaviorAnnotations(name, args) {
+    const config = args[0];
+    if (!config || typeof config !== 'object' || Array.isArray(config) || config.annotations)
+        return args;
+    const annotations = defaultAnnotationsForTool(name);
+    if (!annotations)
+        return args;
+    return [{ ...config, annotations }, ...args.slice(1)];
+}
+export function resolveToolsetMode(value = process.env.QWEN_DAP_MCP_TOOLSET) {
+    if (value === undefined || value.trim() === '') {
+        return securityProfileDefaults(resolveSecurityProfile()).toolset;
+    }
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'agent' || normalized === 'forensics' || normalized === 'full')
+        return normalized;
+    logger.warn('Invalid QWEN_DAP_MCP_TOOLSET; falling back to the safe agent toolset', { value });
+    return 'agent';
+}
+export function toolsetAllows(mode, toolName) {
+    if (mode === 'full')
+        return true;
+    if (mode === 'forensics')
+        return FORENSICS_TOOL_NAMES.has(toolName);
+    return AGENT_TOOL_NAMES.has(toolName);
+}
+export function annotateToolRegistrar(registrar) {
+    return new Proxy(registrar, {
+        get(target, property, receiver) {
+            if (property === 'registerTool') {
+                return (name, ...args) => target.registerTool.call(target, name, ...withBehaviorAnnotations(name, args));
+            }
+            const value = Reflect.get(target, property, receiver);
+            return typeof value === 'function' ? value.bind(target) : value;
+        },
+    });
+}
+export function filterToolRegistrar(registrar, mode) {
+    if (mode === 'full')
+        return registrar;
+    return new Proxy(registrar, {
+        get(target, property, receiver) {
+            if (property === 'registerTool') {
+                return (name, ...args) => {
+                    if (!toolsetAllows(mode, name)) {
+                        logger.debug('Tool registration filtered by active toolset', { mode, tool: name });
+                        return FILTERED_TOOL_HANDLE;
+                    }
+                    return target.registerTool.call(target, name, ...args);
+                };
+            }
+            const value = Reflect.get(target, property, receiver);
+            return typeof value === 'function' ? value.bind(target) : value;
+        },
+    });
+}
+//# sourceMappingURL=toolset.js.map
