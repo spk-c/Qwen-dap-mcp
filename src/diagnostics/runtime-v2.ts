@@ -47,8 +47,8 @@ function classifyException(text) {
     return text ? 'exception-or-signal' : 'unknown-stop';
 }
 function variableHazards(snapshot) {
-    const hazards = new Set();
-    const patterns = [
+    const hazards = new Set<string>();
+    const patterns: Array<[RegExp, string]> = [
         [/feeefeee/i, 'freed-heap-pattern'],
         [/dddddddd/i, 'freed-debug-heap-pattern'],
         [/cdcdcdcd|cccccccc|baadf00d/i, 'uninitialized-pattern'],
@@ -68,7 +68,7 @@ function variableHazards(snapshot) {
 }
 function sanitizerKinds(lines) {
     const joined = lines.join('\n').toLowerCase();
-    const kinds = new Set();
+    const kinds = new Set<string>();
     if (joined.includes('addresssanitizer'))
         kinds.add('asan');
     if (joined.includes('threadsanitizer'))
