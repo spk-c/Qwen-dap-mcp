@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -97,7 +96,8 @@ function findOnPath(command) {
         .find(Boolean);
     return first && isFile(first) ? first : undefined;
 }
-export function discoverCodeLldb(options = {}) {
+export type CodeLldbDiscoveryOptions = { env?: NodeJS.ProcessEnv; explicitPath?: string; extensionRoots?: string[]; homeDirectory?: string; allowPathFallback?: boolean };
+export function discoverCodeLldb(options: CodeLldbDiscoveryOptions = {}) {
     const env = options.env ?? process.env;
     const searched = [];
     if (options.explicitPath) {

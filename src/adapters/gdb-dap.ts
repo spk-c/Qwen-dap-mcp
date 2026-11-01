@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -73,7 +72,8 @@ function resultFor(command, source, searched) {
         version: probeGdbVersion(command),
     };
 }
-export function discoverGdbDap(options = {}) {
+export type GdbDapDiscoveryOptions = { env?: NodeJS.ProcessEnv; explicitPath?: string; allowPathFallback?: boolean };
+export function discoverGdbDap(options: GdbDapDiscoveryOptions = {}) {
     const env = options.env ?? process.env;
     const searched = [];
     if (options.explicitPath) {

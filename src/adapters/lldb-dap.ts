@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -68,7 +67,8 @@ function findWithXcrun() {
     const candidate = result.stdout.trim();
     return candidate && isFile(candidate) ? candidate : undefined;
 }
-export function discoverLldbDap(options = {}) {
+export type LldbDapDiscoveryOptions = { env?: NodeJS.ProcessEnv; explicitPath?: string; allowPathFallback?: boolean; allowToolchainFallback?: boolean; toolchainCandidates?: string[]; allowXcrunFallback?: boolean };
+export function discoverLldbDap(options: LldbDapDiscoveryOptions = {}) {
     const env = options.env ?? process.env;
     const searched = [];
     if (options.explicitPath) {
