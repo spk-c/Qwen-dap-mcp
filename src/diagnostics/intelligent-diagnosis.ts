@@ -67,8 +67,8 @@ function confidenceFromScore(score: number): DiagnosisConfidence {
     return 'low';
 }
 function projectHints(options: IntelligentDiagnosisOptions) {
-    const roots = new Set();
-    const addRoot = (value) => {
+    const roots = new Set<string>();
+    const addRoot = (value: string | undefined): void => {
         const normalized = normalizeDiagnosticPath(value);
         if (normalized)
             roots.add(normalized);
@@ -181,7 +181,7 @@ const X86_REGISTER_RE = /\b(?:r(?:ax|bx|cx|dx|si|di|sp|bp|ip|8|9|1[0-5])|r(?:8|9
 const ARM_REGISTER_RE = /\b(?:[xw](?:[0-9]|[12][0-9]|30)|sp|pc|lr)\b/gi;
 function canonicalX86Register(value: string): string {
     const name = value.toLowerCase();
-    const aliases = {
+    const aliases: Record<string, string> = {
         eax: 'rax', ax: 'rax', al: 'rax', ah: 'rax',
         ebx: 'rbx', bx: 'rbx', bl: 'rbx', bh: 'rbx',
         ecx: 'rcx', cx: 'rcx', cl: 'rcx', ch: 'rcx',
@@ -384,7 +384,7 @@ function buildProvenance(evidence: FrameEvidence[]): CallChainAnalysis['provenan
             values.set(value, occurrences);
         }
     }
-    const output = [];
+    const output: CallChainAnalysis['provenance'] = [];
     for (const [value, occurrences] of values) {
         if (new Set(occurrences.map((item) => item.index)).size < 2)
             continue;
@@ -411,7 +411,7 @@ function buildProvenance(evidence: FrameEvidence[]): CallChainAnalysis['provenan
 export function analyzeCallChain(selection: ProjectFrameSelection, evidence: FrameEvidence[]): CallChainAnalysis {
     const selectedIndex = selection.selected.index;
     const frames = selection.assessments.map((assessment) => {
-        let role = 'other';
+        let role: CallChainFrame['role'] = 'other';
         if (assessment.index === 0)
             role = assessment.index === selectedIndex ? 'project-fault' : 'fault';
         else if (assessment.index === selectedIndex)
