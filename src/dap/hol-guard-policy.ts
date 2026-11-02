@@ -216,7 +216,7 @@ function parseDecision(stdout: string): HolGuardDecision {
             cause: error instanceof Error ? error : undefined,
         });
     }
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    if (!parsed || typeof parsed !== 'object') {
         throw new DapError('HOL Guard bridge returned an invalid decision object');
     }
     const record = parsed as Record<string, unknown>;
