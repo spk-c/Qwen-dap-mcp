@@ -2,13 +2,34 @@ import { readdirSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { resolveExistingDirectory, resolveExistingFile } from '../local-path.js';
-export function resolveSymbolInspectionTool(name, envName) {
+
+type ToolProbe = { command?: string; output?: string; error?: string };
+type BinaryIdentity = {
+    path: string;
+    format: string;
+    buildId?: string;
+    pdb?: { path?: string; guid?: string; age?: string };
+    uuid?: string;
+    probes: ToolProbe[];
+};
+type PdbIdentity = { path: string; guid?: string; age?: string; probe: ToolProbe };
+type SymbolModule = { name: string; path?: string; symbolStatus?: string; symbolFilePath?: string };
+type SymbolCandidate = { module: string; candidate: string; reason: string };
+type LocalSymbols = { matches: SymbolCandidate[] };
+type SymbolSummaryOptions = {
+    modules: SymbolModule[];
+    binaryIdentity?: BinaryIdentity;
+    pdbIdentity?: PdbIdentity;
+    localSearch?: LocalSymbols;
+};
+
+export function resolveSymbolInspectionTool(name: string, envName: string): string | undefined {
     const configured = process.env[envName]?.trim();
     if (configured)
         return resolveExistingFile(configured, `${name} executable`);
     return commandOnPath(name);
 }
-function commandOnPath(name) {
+function commandOnPath(name: string): string | undefined {
     const locator = process.platform === 'win32' ? 'where.exe' : 'which';
     const result = spawnSync(locator, [name], {
         encoding: 'utf8',
@@ -21,7 +42,7 @@ function commandOnPath(name) {
         return undefined;
     return result.stdout.split(/\r?\n/).map((line) => line.trim()).find(Boolean);
 }
-function run(command, args) {
+function run(command: string | undefined, args: string[]): ToolProbe {
     if (!command)
         return { error: 'tool-not-found' };
     const result = spawnSync(command, args, {
@@ -43,13 +64,13 @@ function run(command, args) {
         output: `${result.stdout ?? ''}\n${result.stderr ?? ''}`.trim().slice(-128 * 1024),
     };
 }
-function normalizedId(value) {
+function normalizedId(value: string | undefined): string | undefined {
     return value?.replace(/[{}\-\s]/g, '').toLowerCase();
 }
-export function inspectBinaryIdentity(input) {
+export function inspectBinaryIdentity(input: string): BinaryIdentity {
     const path = resolveExistingFile(input, 'Binary image');
     const extension = extname(path).toLowerCase();
-    const probes = [];
+    const probes: ToolProbe[] = [];
     if (process.platform !== 'win32' || ['.so', '.elf', ''].includes(extension)) {
         const readelf = commandOnPath('readelf') ?? commandOnPath('llvm-readelf');
         const probe = run(readelf, ['-n', path]);
@@ -89,7 +110,7 @@ export function inspectBinaryIdentity(input) {
     }
     return { path, format: 'unknown', probes };
 }
-export function inspectPdbIdentity(input) {
+export function inspectPdbIdentity(input: string): PdbIdentity {
     const path = resolveExistingFile(input, 'PDB file');
     const command = resolveSymbolInspectionTool('llvm-pdbutil', 'QWEN_DAP_MCP_LLVM_PDBUTIL');
     const probe = run(command, ['dump', '-summary', path]);
@@ -103,11 +124,11 @@ export function inspectPdbIdentity(input) {
         probe,
     };
 }
-function stem(name) {
+function stem(name: string): string {
     const base = basename(name).toLowerCase();
     return base.replace(/\.(?:exe|dll|so(?:\.\d+)*|dylib|pdb|debug)$/i, '');
 }
-export function compareBinaryAndPdb(binary, pdb) {
+export function compareBinaryAndPdb(binary: BinaryIdentity, pdb: PdbIdentity) {
     if (binary.format !== 'pe' || !binary.pdb) {
         return {
             comparable: false,
@@ -136,7 +157,7 @@ export function compareBinaryAndPdb(binary, pdb) {
         strength: binary.pdb.age && pdb.age ? 'strong-guid-age' : 'guid-only',
     };
 }
-export function findLocalSymbolCandidates(modules, searchPaths, options: { maxEntries?: number; maxDepth?: number } = {}) {
+export function findLocalSymbolCandidates(modules: SymbolModule[], searchPaths: string[], options: { maxEntries?: number; maxDepth?: number } = {}) {
     const maxEntries = options.maxEntries ?? 2_000;
     const maxDepth = options.maxDepth ?? 4;
     const roots = searchPaths.map((path) => resolveExistingDirectory(path, 'Symbol search directory'));
@@ -146,10 +167,10 @@ export function findLocalSymbolCandidates(modules, searchPaths, options: { maxEn
         symbolStatus: module.symbolStatus,
         currentSymbolFilePath: module.symbolFilePath,
     }));
-    const matches = [];
+    const matches: SymbolCandidate[] = [];
     let visited = 0;
     let truncated = false;
-    const walk = (directory, depth) => {
+    const walk = (directory: string, depth: number): void => {
         if (depth > maxDepth || truncated)
             return;
         let entries;
@@ -202,13 +223,13 @@ export function findLocalSymbolCandidates(modules, searchPaths, options: { maxEn
             .slice(0, 200),
     };
 }
-export function configuredSymbolResolvers(identity, value = process.env.QWEN_DAP_MCP_SYMBOL_SERVERS) {
+export function configuredSymbolResolvers(identity: BinaryIdentity | undefined, value = process.env.QWEN_DAP_MCP_SYMBOL_SERVERS) {
     const servers = (value ?? '')
         .split(',')
         .map((entry) => entry.trim())
         .filter(Boolean)
         .slice(0, 20);
-    const candidates = [];
+    const candidates: Array<{ server: string; kind: string; url?: string }> = [];
     for (const server of servers) {
         if (identity?.format === 'elf' && identity.buildId && /^https?:\/\//i.test(server)) {
             candidates.push({
@@ -232,12 +253,12 @@ export function configuredSymbolResolvers(identity, value = process.env.QWEN_DAP
         note: 'qwen-dap-mcp does not automatically download symbols. Resolver candidates are explicit so the host agent/user can review network destinations and cache policy first.',
     };
 }
-export function symbolMismatchSummary(options) {
+export function symbolMismatchSummary(options: SymbolSummaryOptions) {
     const explicitMissing = options.modules.filter((module) => /missing|not\s+(?:loaded|found|available)|no\s+symbols?/i.test(module.symbolStatus ?? ''));
     const binaryPdbComparison = options.binaryIdentity && options.pdbIdentity
         ? compareBinaryAndPdb(options.binaryIdentity, options.pdbIdentity)
         : undefined;
-    const issues = [];
+    const issues: Array<{ kind: string; module?: string; path?: string; symbolStatus?: string; comparison?: ReturnType<typeof compareBinaryAndPdb>; severity?: string }> = [];
     for (const module of explicitMissing.slice(0, 100)) {
         issues.push({
             kind: 'module-symbols-missing',
