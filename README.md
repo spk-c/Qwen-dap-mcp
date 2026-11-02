@@ -1,8 +1,6 @@
-# qwen-dap-mcp
+# Qwen DAP MCP — Native Debugger for Qwen Code and AI Coding Agents
 
-> **Maintained Apache-2.0 fork of the original project by SLP-DEV1.** The source of truth for this maintained edition is [spk-c/Qwen-dap-mcp](https://github.com/spk-c/Qwen-dap-mcp). The npm package is [`@slp-dev1/qwen-dap-mcp`](https://www.npmjs.com/package/@slp-dev1/qwen-dap-mcp); the registry always serves the latest **published** version, while `main` may contain newer, unreleased changes. See [fork notes](https://github.com/spk-c/Qwen-dap-mcp/blob/main/README-FORK-CHANGES.md) and [TypeScript migration status](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/typescript-migration.md).
-
-**Give coding agents a real native debugger.**
+**Debug native C/C++ crashes, hangs, deadlocks, Windows minidumps and core dumps with Qwen Code or another MCP-compatible coding agent.** Connect a real GDB, LLDB or CodeLLDB debugger through the Debug Adapter Protocol (DAP) and Model Context Protocol (MCP).
 
 `qwen-dap-mcp` is a local **Debug Adapter Protocol (DAP) → Model Context Protocol (MCP)** bridge for native crash debugging, hang/deadlock triage, crash dumps, differential runtime analysis, remote targets, and bounded fix/verify workflows.
 
@@ -15,6 +13,8 @@ Built for **Qwen Code**, usable from any stdio MCP client, and designed to expos
 [![GitHub stars](https://img.shields.io/github/stars/spk-c/Qwen-dap-mcp?style=social)](https://github.com/spk-c/Qwen-dap-mcp/stargazers)
 
 **[Quick start](#quick-start) · [Capabilities](#what-it-does) · [Debugger support](#debugger-support) · [Safety](#safety-by-design) · [Docs](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/README.md) · [Contributing](https://github.com/spk-c/Qwen-dap-mcp/blob/main/CONTRIBUTING.md)**
+
+> **Maintained Apache-2.0 fork of the original project by SLP-DEV1.** The maintained source is [spk-c/Qwen-dap-mcp](https://github.com/spk-c/Qwen-dap-mcp); npm distributes [`@slp-dev1/qwen-dap-mcp`](https://www.npmjs.com/package/@slp-dev1/qwen-dap-mcp). GitHub's `main` may be ahead of the latest published npm version. See [fork notes](https://github.com/spk-c/Qwen-dap-mcp/blob/main/README-FORK-CHANGES.md) and [TypeScript migration status](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/typescript-migration.md).
 
 ## Why this exists
 
@@ -217,6 +217,18 @@ npm run check:pack
 ```
 
 The checks include source/build integrity, MCP tests, document consistency, and inspection of the **actual npm tarball**. Native adapter end-to-end tests run in dedicated CI jobs and require their debugger/toolchain prerequisites. See the [integration tests](https://github.com/spk-c/Qwen-dap-mcp/tree/main/integration) and the [benchmark harness](https://github.com/spk-c/Qwen-dap-mcp/tree/main/benchmark); no performance claims are made without recorded, reproducible results.
+
+## Practical debugging tutorials
+
+These focused tutorials describe setup, expected debugger evidence and limitations with real native targets; the MCP bridge does not bundle a debugger.
+
+- **[C/C++ crash debugging with Qwen Code](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/tutorial-cpp-crash-debugging.md)** — reproduce a native crash, capture stack/register/local evidence and verify a fix.
+- **[Windows minidump debugging with CodeLLDB](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/tutorial-windows-minidump.md)** — inspect a crash dump with matching executable and symbols, without rerunning the crashing process.
+- **[GDB/LLDB MCP setup and troubleshooting](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/tutorial-gdb-lldb-mcp.md)** — install a DAP-capable adapter, discover MCP tools and resolve common adapter issues.
+
+## MCP Registry discovery
+
+The maintained package publishes its MCP metadata under **`io.github.spk-c/qwen-dap-mcp`** when a matching npm version and official registry publication succeed. This is separate from any historical registry listing for the original author. See [publishing and registry verification](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/publishing.md); a listing is not proof of a particular feature until its exact package version is verified.
 
 ## Documentation
 
