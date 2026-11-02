@@ -68,7 +68,7 @@ export class ManagedRrReplay {
                 cleanup();
                 resolve();
             };
-            const onError = (error) => {
+            const onError = (error: Error) => {
                 cleanup();
                 reject(new DapError(`Failed to start rr replay: ${error.message}`, { cause: error }));
             };

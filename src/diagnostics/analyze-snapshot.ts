@@ -132,7 +132,7 @@ export function correlateSourceDisassembly(snapshot: RuntimeSnapshot) {
     const instructions = snapshot.disassembly ?? [];
     const ip = snapshot.frame.instructionPointerReference;
     const ipAddress = parseAddress(ip);
-    let currentIndex = instructions.findIndex((instruction) => instruction.address.toLowerCase() === ip?.toLowerCase());
+    let currentIndex = instructions.findIndex((instruction: DebugProtocol.DisassembledInstruction) => instruction.address.toLowerCase() === ip?.toLowerCase());
     if (currentIndex < 0 && ipAddress !== undefined && instructions.length > 0) {
         let nearestDistance: bigint | undefined;
         for (let index = 0; index < instructions.length; index += 1) {

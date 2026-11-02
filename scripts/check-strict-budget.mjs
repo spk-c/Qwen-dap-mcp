@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 // Temporary migration ceiling, tightened whenever a checked-in batch reduces
 // full strict compiler diagnostics. Zero is the acceptance criterion for #24.
-const MAX_STRICT_DIAGNOSTICS = 41;
+const MAX_STRICT_DIAGNOSTICS = 13;
 const root = fileURLToPath(new URL('../', import.meta.url));
 const typescript = join(root, 'node_modules', 'typescript', 'bin', 'tsc');
 const result = spawnSync(process.execPath, [
@@ -32,11 +32,11 @@ const byFile = new Map();
 for (const line of errors) {
   const match = line.match(/^(.+?)\((\d+),(\d+)\): error (TS\d+): (.+)$/);
   if (!match) continue;
-  const [, file, , , code, detail] = match;
+  const [, file, lineNumber, column, code, detail] = match;
   const entry = byFile.get(file) ?? { count: 0, codes: new Map(), samples: [] };
   entry.count += 1;
   entry.codes.set(code, (entry.codes.get(code) ?? 0) + 1);
-  if (entry.samples.length < 3) entry.samples.push(code + ': ' + detail.slice(0, 140));
+  if (entry.samples.length < 3) entry.samples.push(lineNumber + ':' + column + ' ' + code + ': ' + detail.slice(0, 140));
   byFile.set(file, entry);
 }
 console.log('Most affected modules:');

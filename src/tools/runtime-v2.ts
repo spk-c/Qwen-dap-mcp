@@ -115,7 +115,7 @@ async function captureTimeline(session: GuardedDapSession, options: TimelineCapt
                     stack = await session.stackTrace(thread.id, 0, options.stackLevels);
                     const frame = stack[0];
                     if (frame) {
-                        const scopes = await session.scopes(frame.id);
+                        const scopes: DebugProtocol.Scope[] = await session.scopes(frame.id);
                         for (const scope of scopes.filter((candidate) => /locals?|arguments?|parameters?/i.test(candidate.name)).slice(0, 2)) {
                             if (scope.variablesReference > 0) {
                                 variables.push(...await session.variables(scope.variablesReference, 0, options.maxVariables));

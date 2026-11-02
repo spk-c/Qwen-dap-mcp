@@ -1,4 +1,5 @@
 import * as z from 'zod/v4';
+import type { DebugProtocol } from '@vscode/debugprotocol';
 import type { McpServer } from '@modelcontextprotocol/server';
 import type { GuardedDapSession } from '../dap/guarded-session.js';
 
@@ -128,14 +129,14 @@ export function parseSanitizerEvidence(lines: string[]) {
     return findings;
 }
 function stableFrameKey(snapshot: RuntimeSnapshot): string {
-    const frames = snapshot.stack.slice(0, 6).map((frame) => {
+    const frames = snapshot.stack.slice(0, 6).map((frame: DebugProtocol.StackFrame) => {
         const source = frame.source?.path ?? frame.source?.name ?? '';
         return `${frame.name}|${source}|${frame.line}`;
     });
     return frames.join('>');
 }
 function fingerprintFrameKey(snapshot: RuntimeSnapshot): string {
-    return snapshot.stack.slice(0, 6).map((frame) => {
+    return snapshot.stack.slice(0, 6).map((frame: DebugProtocol.StackFrame) => {
         const path = frame.source?.path;
         const basename = path ? (path.split(/[\\/]/).pop() ?? path) : undefined;
         const source = frame.source?.name ?? basename ?? '';
@@ -255,7 +256,7 @@ export async function progressProbe(session: GuardedDapSession, options: Progres
             captures.push({
                 index: index + 1,
                 signature: sampleSignature(snapshot),
-                topFrames: snapshot.stack.slice(0, 5).map((frame) => ({
+                topFrames: snapshot.stack.slice(0, 5).map((frame: DebugProtocol.StackFrame) => ({
                     name: frame.name,
                     ...(frame.source?.path || frame.source?.name ? { source: frame.source?.path ?? frame.source?.name } : {}),
                     line: frame.line,
