@@ -29,4 +29,4 @@ Running any external debugger binary is still privileged: use trusted adapters a
 
 Remote debugging is loopback-only by default, with QWEN_DAP_MCP_REMOTE_DEBUG_HOSTS for explicitly trusted remote hosts.
 
-The npm scope @slp-dev1 belongs to the upstream project and does not publish this fork's fixes.
+The maintained fork is configured to publish the `@slp-dev1/qwen-dap-mcp` npm package using OIDC Trusted Publishing. Only published npm versions include released fork changes; unreleased changes remain on GitHub. See [publishing](publishing.md).
