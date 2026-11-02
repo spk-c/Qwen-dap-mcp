@@ -1,9 +1,9 @@
 # Changelog
 
-## Unreleased — TypeScript source migration
+## Unreleased — development tooling updates
 
-- Migrated 51 runtime modules to source-of-truth TypeScript while retaining JS compatibility and safety fixes.
-- Recovered legacy v0.12.0 TypeScript definitions as reference; 37 modules statically checked, 14 still require full annotations.
+- Completed full strict TypeScript migration of all 51 runtime modules (PRs #52–#56; zero strict diagnostics); restored precise documentation after earlier release notes described the in-progress migration.
+- Updated GitHub Actions checkout/setup-node/CodeQL major versions and development-only typing/compiler dependencies. No new package has been published for these unreleased changes.
 
 ## 0.19.1 — npm publishing and documentation
 
