@@ -6,6 +6,37 @@ import { fileURLToPath } from 'node:url';
 import { DapError } from './errors.js';
 import { mergeEnvironment } from './environment.js';
 import { createDapRequestPolicy, resolveDapPolicyMode, } from './request-policy.js';
+import type { DapPolicyDecision, DapRequestContext } from './request-policy.js';
+
+type HolGuardDecision = {
+    allow: boolean;
+    action: string;
+    reason: string;
+    source?: string;
+    guardVersion?: string;
+    approvalRequestId?: string;
+    approvalCenterUrl?: string;
+    reviewCommand?: string;
+};
+type HolGuardEvaluator = {
+    enabled: boolean;
+    evaluate: (action: Record<string, unknown>) => Promise<HolGuardDecision>;
+};
+type GuardStartOptions = {
+    command: string;
+    args?: string[];
+    cwd?: string;
+    env?: NodeJS.ProcessEnv;
+};
+type AdapterIdentityContext = {
+    adapterCommand?: string;
+    adapterResolvedCommand?: string;
+    adapterExecutableHash?: string;
+    cwd?: string;
+    envHash?: string;
+    envKeys?: string[];
+};
+
 const HOL_GUARD_COMMANDS = new Set([
     'attach',
     'configurationDone',
@@ -93,7 +124,7 @@ const SENSITIVE_ARGUMENT_KEYS = new Set([
 ]);
 const ENVIRONMENT_ARGUMENT_KEYS = new Set(['env', 'environment', 'environmentvariables']);
 const CLI_ARGUMENT_KEYS = new Set(['args', 'arguments', 'argv', 'commandlineargs', 'programargs']);
-function parseEnabled(value) {
+function parseEnabled(value: string | undefined): boolean {
     if (value === undefined || value.trim() === '')
         return false;
     const normalized = value.trim().toLowerCase();
@@ -103,7 +134,7 @@ function parseEnabled(value) {
         return false;
     throw new DapError(`Unsupported QWEN_DAP_MCP_HOL_GUARD value '${value}'. Expected on/off, true/false, or 1/0.`);
 }
-function parseTimeout(value) {
+function parseTimeout(value: string | undefined): number {
     if (!value || value.trim() === '')
         return DEFAULT_TIMEOUT_MS;
     const parsed = Number.parseInt(value, 10);
@@ -112,7 +143,7 @@ function parseTimeout(value) {
     }
     return parsed;
 }
-function firstExecutableOnPath(name) {
+function firstExecutableOnPath(name: string): string | undefined {
     const finder = process.platform === 'win32' ? 'where' : 'which';
     const result = spawnSync(finder, [name], {
         encoding: 'utf8',
@@ -123,7 +154,7 @@ function firstExecutableOnPath(name) {
         return undefined;
     return result.stdout.split(/\r?\n/).map((line) => line.trim()).find(Boolean);
 }
-function pythonBesideHolGuard() {
+function pythonBesideHolGuard(): string | undefined {
     const executable = firstExecutableOnPath('hol-guard');
     if (!executable)
         return undefined;
@@ -137,7 +168,7 @@ function pythonBesideHolGuard() {
     const candidate = join(dirname(resolvedExecutable), process.platform === 'win32' ? 'python.exe' : 'python');
     return existsSync(candidate) ? candidate : undefined;
 }
-function resolvePythonCommand(explicit) {
+function resolvePythonCommand(explicit: string | undefined): string {
     const configured = explicit?.trim() || process.env.QWEN_DAP_MCP_HOL_GUARD_PYTHON?.trim();
     const candidate = configured || pythonBesideHolGuard() || (process.platform === 'win32' ? 'python' : 'python3');
     const resolved = resolveAdapterExecutable(candidate, undefined, process.env);
@@ -146,14 +177,14 @@ function resolvePythonCommand(explicit) {
     }
     return resolved;
 }
-function defaultBridgePath() {
+function defaultBridgePath(): string {
     const candidates = [
         fileURLToPath(new URL('../../scripts/hol-guard-dap-policy.py', import.meta.url)),
         fileURLToPath(new URL('../scripts/hol-guard-dap-policy.py', import.meta.url)),
     ];
     return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0];
 }
-function resolveBridgePath(path) {
+function resolveBridgePath(path: string): string {
     try {
         if (!statSync(path).isFile())
             throw new DapError(`HOL Guard bridge is not a regular file: ${path}`);
@@ -167,16 +198,16 @@ function resolveBridgePath(path) {
         });
     }
 }
-function truncate(value, max = 500) {
+function truncate(value: string, max = 500): string {
     const compact = value.trim().replace(/\s+/g, ' ');
     return compact.length <= max ? compact : `${compact.slice(0, max)}…`;
 }
-function optionalString(record, key) {
+function optionalString(record: Record<string, unknown>, key: string): string | undefined {
     const value = record[key];
     return typeof value === 'string' && value.trim() ? value : undefined;
 }
-function parseDecision(stdout) {
-    let parsed;
+function parseDecision(stdout: string): HolGuardDecision {
+    let parsed: unknown;
     try {
         parsed = JSON.parse(stdout);
     }
@@ -185,10 +216,10 @@ function parseDecision(stdout) {
             cause: error instanceof Error ? error : undefined,
         });
     }
-    if (!parsed || typeof parsed !== 'object') {
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
         throw new DapError('HOL Guard bridge returned an invalid decision object');
     }
-    const record = parsed;
+    const record = parsed as Record<string, unknown>;
     if (typeof record.allow !== 'boolean' || typeof record.action !== 'string' || typeof record.reason !== 'string') {
         throw new DapError('HOL Guard bridge decision is missing allow/action/reason');
     }
@@ -203,8 +234,8 @@ function parseDecision(stdout) {
         ...(optionalString(record, 'reviewCommand') ? { reviewCommand: optionalString(record, 'reviewCommand') } : {}),
     };
 }
-export function buildHolGuardBridgeEnvironment(source = process.env) {
-    const output = {};
+export function buildHolGuardBridgeEnvironment(source: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+    const output: NodeJS.ProcessEnv = {};
     for (const [key, value] of Object.entries(source)) {
         if (value === undefined)
             continue;
@@ -216,8 +247,8 @@ export function buildHolGuardBridgeEnvironment(source = process.env) {
     }
     return output;
 }
-function runBridge(pythonCommand, bridgePath, timeoutMs, action) {
-    return new Promise((resolvePromise, reject) => {
+function runBridge(pythonCommand: string, bridgePath: string, timeoutMs: number, action: Record<string, unknown>): Promise<HolGuardDecision> {
+    return new Promise<HolGuardDecision>((resolvePromise, reject) => {
         const child = spawn(pythonCommand, ['-I', bridgePath], {
             stdio: ['pipe', 'pipe', 'pipe'],
             shell: false,
@@ -228,7 +259,7 @@ function runBridge(pythonCommand, bridgePath, timeoutMs, action) {
         let stderr = '';
         let outputBytes = 0;
         let settled = false;
-        const finish = (error: Error | undefined, decision?: any) => {
+        const finish = (error: Error | undefined, decision?: HolGuardDecision) => {
             if (settled)
                 return;
             settled = true;
@@ -236,9 +267,9 @@ function runBridge(pythonCommand, bridgePath, timeoutMs, action) {
             if (error)
                 reject(error);
             else
-                resolvePromise(decision);
+                resolvePromise(decision!);
         };
-        const append = (current, chunk) => {
+        const append = (current: string, chunk: string | Buffer): string => {
             const text = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
             outputBytes += Buffer.byteLength(text, 'utf8');
             if (outputBytes > MAX_OUTPUT_BYTES) {
@@ -278,7 +309,7 @@ function runBridge(pythonCommand, bridgePath, timeoutMs, action) {
         child.stdin.end(`${JSON.stringify(action)}\n`);
     });
 }
-export function buildHolGuardEnvironmentFingerprint(overrides) {
+export function buildHolGuardEnvironmentFingerprint(overrides?: NodeJS.ProcessEnv) {
     const merged: Record<string, string> = {};
     for (const [key, value] of Object.entries(mergeEnvironment(process.env, overrides))) {
         if (typeof value === 'string')
@@ -297,10 +328,10 @@ export function buildHolGuardEnvironmentFingerprint(overrides) {
         envHash: `sha256:${hash.digest('hex')}`,
     };
 }
-function normalizedArgumentKey(key) {
+function normalizedArgumentKey(key: string): string {
     return key.replace(/[^A-Za-z0-9]/g, '').toLowerCase();
 }
-function canonicalJson(value, seen = new Set()) {
+function canonicalJson(value: unknown, seen: Set<object> = new Set()): string {
     if (value === null || typeof value !== 'object') {
         const serialized = JSON.stringify(value);
         return serialized === undefined ? String(value) : serialized;
@@ -311,7 +342,7 @@ function canonicalJson(value, seen = new Set()) {
     try {
         if (Array.isArray(value))
             return `[${value.map((item) => canonicalJson(item, seen)).join(',')}]`;
-        const record = value;
+        const record = value as Record<string, unknown>;
         const entries = Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key], seen)}`);
         return `{${entries.join(',')}}`;
     }
@@ -319,24 +350,24 @@ function canonicalJson(value, seen = new Set()) {
         seen.delete(value);
     }
 }
-function privacyDigest(value) {
+function privacyDigest(value: string): string {
     return createHmac('sha256', REDACTION_HMAC_KEY).update(value, 'utf8').digest('hex');
 }
-function redactedValue(value) {
+function redactedValue(value: unknown) {
     return {
         [REDACTED_MARKER]: true,
         sha256: `sha256:${privacyDigest(canonicalJson(value))}`,
         valueType: value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value,
     };
 }
-function redactedArgText(value) {
+function redactedArgText(value: string): string {
     return `<redacted:sha256:${privacyDigest(value)}>`;
 }
-function adapterFlagName(value) {
+function adapterFlagName(value: string): string {
     return normalizedArgumentKey(value.replace(/^--?/, '').split('=', 1)[0] ?? '');
 }
-export function sanitizeAdapterArgsForHolGuard(args) {
-    const output = [];
+export function sanitizeAdapterArgsForHolGuard(args: string[]): string[] {
+    const output: string[] = [];
     for (let index = 0; index < args.length; index += 1) {
         const arg = args[index];
         const equals = arg.indexOf('=');
@@ -358,7 +389,7 @@ export function sanitizeAdapterArgsForHolGuard(args) {
     }
     return output;
 }
-function sanitizeEnvironmentContainer(value) {
+function sanitizeEnvironmentContainer(value: unknown): unknown {
     if (Array.isArray(value)) {
         return value.map((item) => {
             if (typeof item === 'string') {
@@ -369,7 +400,7 @@ function sanitizeEnvironmentContainer(value) {
                 return redactedValue(item);
             }
             if (item && typeof item === 'object') {
-                const output = {};
+                const output: Record<string, unknown> = {};
                 for (const [key, nested] of Object.entries(item)) {
                     output[key] = normalizedArgumentKey(key) === 'value'
                         ? redactedValue(nested)
@@ -381,7 +412,7 @@ function sanitizeEnvironmentContainer(value) {
         });
     }
     if (value && typeof value === 'object') {
-        const environment = {};
+        const environment: Record<string, unknown> = {};
         for (const [envKey, envValue] of Object.entries(value)) {
             environment[envKey] = redactedValue(envValue);
         }
@@ -389,7 +420,7 @@ function sanitizeEnvironmentContainer(value) {
     }
     return redactedValue(value);
 }
-function sanitizeValue(value, keyHint?: string) {
+function sanitizeValue(value: unknown, keyHint?: string): unknown {
     const normalizedKey = keyHint === undefined ? undefined : normalizedArgumentKey(keyHint);
     if (normalizedKey && SENSITIVE_ARGUMENT_KEYS.has(normalizedKey))
         return redactedValue(value);
@@ -405,31 +436,31 @@ function sanitizeValue(value, keyHint?: string) {
         return value.map((item) => sanitizeValue(item));
     if (!value || typeof value !== 'object')
         return value;
-    const record = value;
-    const output = {};
+    const record = value as Record<string, unknown>;
+    const output: Record<string, unknown> = {};
     for (const [key, item] of Object.entries(record)) {
         output[key] = sanitizeValue(item, key);
     }
     return output;
 }
-export function sanitizeDapArgumentsForHolGuard(args) {
+export function sanitizeDapArgumentsForHolGuard(args: unknown): unknown {
     return sanitizeValue(args);
 }
-function envValue(env, name) {
+function envValue(env: NodeJS.ProcessEnv, name: string): string | undefined {
     if (process.platform !== 'win32')
         return env[name];
     const target = name.toUpperCase();
     const key = Object.keys(env).find((candidate) => candidate.toUpperCase() === target);
     return key === undefined ? undefined : env[key];
 }
-function executableNames(command, env) {
+function executableNames(command: string, env: NodeJS.ProcessEnv): string[] {
     if (process.platform !== 'win32' || extname(command))
         return [command];
     const extensions = (envValue(env, 'PATHEXT') || '.COM;.EXE;.BAT;.CMD')
         .split(';').map((value) => value.trim()).filter(Boolean);
     return [command, ...extensions.map((extension) => `${command}${extension}`)];
 }
-function executableFile(path) {
+function executableFile(path: string): boolean {
     try {
         if (!statSync(path).isFile())
             return false;
@@ -441,7 +472,7 @@ function executableFile(path) {
         return false;
     }
 }
-function realExecutable(path) {
+function realExecutable(path: string): string | undefined {
     if (!executableFile(path))
         return undefined;
     try {
@@ -451,7 +482,7 @@ function realExecutable(path) {
         return path;
     }
 }
-export function resolveAdapterExecutable(command, cwd, env) {
+export function resolveAdapterExecutable(command: string, cwd: string | undefined, env: NodeJS.ProcessEnv): string | undefined {
     const baseCwd = cwd ? resolve(cwd) : process.cwd();
     const pathLike = isAbsolute(command) || command.includes('/') || command.includes('\\');
     if (pathLike) {
@@ -474,14 +505,14 @@ export function resolveAdapterExecutable(command, cwd, env) {
     }
     return undefined;
 }
-function hashExecutable(path) {
+function hashExecutable(path: string): string {
     const digest = createHash('sha256').update(readFileSync(path)).digest('hex');
     return `sha256:${digest}`;
 }
-function hashFile(path) {
+function hashFile(path: string): string {
     return `sha256:${createHash('sha256').update(readFileSync(path)).digest('hex')}`;
 }
-function buildAdapterIdentityHash(context, rawArgs) {
+function buildAdapterIdentityHash(context: AdapterIdentityContext, rawArgs: string[]): string {
     const material = {
         version: ADAPTER_IDENTITY_VERSION,
         command: context.adapterCommand ?? null,
@@ -495,7 +526,7 @@ function buildAdapterIdentityHash(context, rawArgs) {
     const digest = createHash('sha256').update(JSON.stringify(material), 'utf8').digest('hex');
     return `sha256:${digest}`;
 }
-function decisionReason(decision) {
+function decisionReason(decision: HolGuardDecision): string {
     const approvalHint = decision.reviewCommand
         ? `; approval: ${decision.reviewCommand}`
         : decision.approvalRequestId
@@ -511,7 +542,7 @@ export function createHolGuardEvaluator(options: {
     pythonCommand?: string;
     bridgePath?: string;
     timeoutMs?: number;
-} = {}) {
+} = {}): HolGuardEvaluator {
     const enabled = options.enabled ?? parseEnabled(process.env.QWEN_DAP_MCP_HOL_GUARD);
     if (!enabled) {
         return { enabled: false, evaluate: async () => ({ allow: true, action: 'allow', reason: 'HOL Guard integration disabled' }) };
@@ -523,7 +554,7 @@ export function createHolGuardEvaluator(options: {
     const timeoutMs = options.timeoutMs ?? parseTimeout(process.env.QWEN_DAP_MCP_HOL_GUARD_TIMEOUT_MS);
     return {
         enabled: true,
-        async evaluate(action) {
+        async evaluate(action: Record<string, unknown>) {
             if (hashExecutable(pythonCommand) !== pythonExecutableHash) {
                 throw new DapError('HOL Guard Python interpreter changed after evaluator initialization; refusing policy execution.');
             }
@@ -534,12 +565,12 @@ export function createHolGuardEvaluator(options: {
         },
     };
 }
-export function shouldConsultHolGuard(command) {
+export function shouldConsultHolGuard(command: string): boolean {
     return HOL_GUARD_COMMANDS.has(command);
 }
-export function createGuardedDapRequestPolicy(evaluator, policyMode = resolveDapPolicyMode(), contextProvider) {
+export function createGuardedDapRequestPolicy(evaluator: HolGuardEvaluator, policyMode = resolveDapPolicyMode(), contextProvider?: () => Record<string, unknown> | undefined): (context: DapRequestContext) => DapPolicyDecision | Promise<DapPolicyDecision> {
     const builtIn = createDapRequestPolicy(policyMode);
-    const applyHolGuard = (context, localDecision) => {
+    const applyHolGuard = (context: DapRequestContext, localDecision: DapPolicyDecision): DapPolicyDecision | Promise<DapPolicyDecision> => {
         if (!localDecision.allow)
             return localDecision;
         if (!evaluator.enabled || !shouldConsultHolGuard(context.command))
@@ -563,14 +594,14 @@ export function createGuardedDapRequestPolicy(evaluator, policyMode = resolveDap
                 : { allow: false, reason: decisionReason(decision) };
         });
     };
-    return (context) => {
+    return (context: DapRequestContext) => {
         const localResult = builtIn(context);
         return isPolicyPromise(localResult)
             ? localResult.then((decision) => applyHolGuard(context, decision))
             : applyHolGuard(context, localResult);
     };
 }
-export async function requireHolGuardAdapterStart(evaluator, options) {
+export async function requireHolGuardAdapterStart(evaluator: HolGuardEvaluator, options: GuardStartOptions) {
     const rawArgs = options.args ?? [];
     const environment = buildHolGuardEnvironmentFingerprint(options.env);
     const baseContext = {
