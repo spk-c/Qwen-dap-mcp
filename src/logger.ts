@@ -18,7 +18,7 @@ function normalizeLogLevel(value: string | undefined): LogLevel {
 function redactLogText(value: string): string {
     return value
         .replace(/\b(Bearer\s+)[^\s"',;]+/gi, '$1[REDACTED]')
-        .replace(/\b((?:password|passwd|access[_-]?token|refresh[_-]?token|api[_-]?key|client[_-]?secret|authorization|cookie)\s*[:=]\s*)[^\s"',;]+/gi, '$1[REDACTED]');
+        .replace(/\b((?:password|passwd|token|access[_-]?token|refresh[_-]?token|api[_-]?key|client[_-]?secret|authorization|cookie)\s*[:=]\s*)[^\s"',;]+/gi, '$1[REDACTED]');
 }
 function isSensitiveLogKey(key: string): boolean {
     const compact = key.replace(/[^a-z0-9]/gi, '').toLowerCase();
