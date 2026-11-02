@@ -38,7 +38,7 @@ jobs:
           set -euo pipefail
           git fetch origin main --tags
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo 'Release commit must be reachable from main.'; exit 1; }
-          node -e "const p=require('./package.json'),q=require('./qwen-extension.json'),l=require('./package-lock.json');if(p.version!==q.version||p.version!==l.version||p.version!==l.packages[''].version||p.private!==false||p.name!=='@slp-dev1/qwen-dap-mcp'||!(/^[0-9]+[.][0-9]+[.][0-9]+(?:-[0-9A-Za-z.-]+)?$/).test(p.version))process.exit(1)"
+          node -e "const p=require('./package.json'),q=require('./qwen-extension.json'),l=require('./package-lock.json'),r=require('./server.json');if(p.version!==q.version||p.version!==l.version||p.version!==l.packages[''].version||p.version!==r.version||r.packages?.[0]?.version!==p.version||r.packages?.[0]?.identifier!==p.name||r.name!==p.mcpName||p.mcpName!=='io.github.spk-c/qwen-dap-mcp'||p.private!==false||p.name!=='@slp-dev1/qwen-dap-mcp'||!(/^[0-9]+[.][0-9]+[.][0-9]+(?:-[0-9A-Za-z.-]+)?$/).test(p.version))process.exit(1)"
           VERSION=$(node -p 'require("./package.json").version')
           test -z "$REQUESTED_VERSION" || test "$REQUESTED_VERSION" = "$VERSION" || { echo 'Requested version differs from package.json.'; exit 1; }
           if [ "$GITHUB_REF_TYPE" = tag ]; then
@@ -95,6 +95,35 @@ jobs:
           else
             npm publish "$archive" --access public --provenance --ignore-scripts
           fi
+      - name: Confirm npm package is available for MCP Registry verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 18); do
+            published=$(npm view "@slp-dev1/qwen-dap-mcp@$RELEASE_VERSION" version 2>/dev/null || true)
+            if [ "$published" = "$RELEASE_VERSION" ]; then exit 0; fi
+            echo "Waiting for npm registry package visibility ($attempt/18)"
+            sleep 10
+          done
+          echo 'npm package is not visible; refusing MCP Registry registration.'
+          exit 1
+      - name: Install official MCP Registry publisher
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            'https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz' \
+            --output /tmp/mcp-publisher.tar.gz
+          mkdir -p /tmp/mcp-publisher-cli
+          tar -xzf /tmp/mcp-publisher.tar.gz -C /tmp/mcp-publisher-cli mcp-publisher
+          echo '/tmp/mcp-publisher-cli' >> "$GITHUB_PATH"
+      - name: Publish verified package metadata to official MCP Registry
+        shell: bash
+        run: |
+          set -euo pipefail
+          mcp-publisher validate server.json
+          mcp-publisher login github-oidc
+          mcp-publisher publish server.json
       - name: Tag vetted commit and create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
