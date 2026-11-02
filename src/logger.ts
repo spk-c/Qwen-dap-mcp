@@ -15,7 +15,17 @@ function normalizeLogLevel(value: string | undefined): LogLevel {
     }
     return 'info';
 }
+function redactLogText(value: string): string {
+    return value
+        .replace(/\b(Bearer\s+)[^\s"',;]+/gi, '$1[REDACTED]')
+        .replace(/\b((?:password|passwd|access[_-]?token|refresh[_-]?token|api[_-]?key|client[_-]?secret|authorization|cookie)\s*[:=]\s*)[^\s"',;]+/gi, '$1[REDACTED]');
+}
+function isSensitiveLogKey(key: string): boolean {
+    const compact = key.replace(/[^a-z0-9]/gi, '').toLowerCase();
+    return ['password', 'passwd', 'secret', 'token', 'apikey', 'authorization', 'credential', 'cookie', 'privatekey'].some((word) => compact.includes(word));
+}
 function normalizeLogValue(value: unknown, ancestors: Set<object>): unknown {
+    if (typeof value === 'string') return redactLogText(value);
     if (typeof value === 'bigint') {
         return value.toString();
     }
@@ -30,8 +40,8 @@ function normalizeLogValue(value: unknown, ancestors: Set<object>): unknown {
         if (value instanceof Error) {
             return {
                 name: value.name,
-                message: value.message,
-                ...(value.stack ? { stack: value.stack } : {}),
+                message: redactLogText(value.message),
+                ...(value.stack ? { stack: redactLogText(value.stack) } : {}),
                 ...('cause' in value && value.cause !== undefined
                     ? { cause: normalizeLogValue(value.cause, ancestors) }
                     : {}),
@@ -45,7 +55,7 @@ function normalizeLogValue(value: unknown, ancestors: Set<object>): unknown {
         }
         const normalized: Record<string, unknown> = {};
         for (const [key, child] of Object.entries(value)) {
-            normalized[key] = normalizeLogValue(child, ancestors);
+            normalized[key] = isSensitiveLogKey(key) ? '[REDACTED]' : normalizeLogValue(child, ancestors);
         }
         return normalized;
     }

@@ -15,8 +15,8 @@ else if (args.has('--help') || args.has('-h')) {
     process.stdout.write('  qwen-dap-mcp --help     Show this help\n');
     process.stdout.write('  qwen-dap-mcp --version  Print the installed version\n\n');
     process.stdout.write('Quick start:\n');
-    process.stdout.write('  qwen extensions install spk-c/Qwen-dap-mcp\n');
-    process.stdout.write('  # For this fork: use node /path/to/Qwen-dap-mcp/dist/index.js\n\n');
+    process.stdout.write('  qwen extensions install @slp-dev1/qwen-dap-mcp\n');
+    process.stdout.write('  # Latest GitHub source: qwen extensions install spk-c/Qwen-dap-mcp\n\n');
     process.stdout.write('Docs: https://github.com/spk-c/Qwen-dap-mcp\n');
 }
 else {
