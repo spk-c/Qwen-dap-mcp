@@ -1,3 +1,21 @@
+import type { DebugProtocol } from '@vscode/debugprotocol';
+import type { DapSession } from '../dap/session.js';
+type RuntimeSnapshot = Awaited<ReturnType<DapSession['runtimeSnapshot']>> & { postmortem?: boolean };
+type Classification = { category: string; crashLikely: boolean; confidence: string };
+type SuspiciousVariable = {
+    scope: string;
+    name: string;
+    value: string;
+    type?: string;
+    reason: string;
+};
+type CrashHypothesis = {
+    kind: string;
+    title: string;
+    confidence: string;
+    evidence: string[];
+    suggestedChecks: string[];
+};
 const POISON_PATTERNS = [
     '0xcccccccc',
     '0xcdcdcdcd',
@@ -7,7 +25,7 @@ const POISON_PATTERNS = [
     '0xdeadbeef',
     '0xbaadf00d',
 ];
-function collectText(value, output = [], depth = 0) {
+function collectText(value: unknown, output: string[] = [], depth = 0): string[] {
     if (depth > 4 || value === null || value === undefined)
         return output;
     if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
@@ -26,7 +44,7 @@ function collectText(value, output = [], depth = 0) {
     }
     return output;
 }
-function diagnosticText(snapshot) {
+function diagnosticText(snapshot: RuntimeSnapshot): string {
     const stopped = snapshot.stopped;
     return [
         stopped?.reason,
@@ -35,7 +53,7 @@ function diagnosticText(snapshot) {
         ...collectText(snapshot.exception),
     ].filter((value) => Boolean(value)).join(' ').toLowerCase();
 }
-function exceptionFatality(snapshot) {
+function exceptionFatality(snapshot: RuntimeSnapshot): boolean | undefined {
     const mode = snapshot.exception?.breakMode;
     if (mode === 'unhandled' || mode === 'userUnhandled')
         return true;
@@ -48,14 +66,14 @@ function exceptionFatality(snapshot) {
         return false;
     return undefined;
 }
-function crashClassification(category, defaultConfidence, fatality) {
+function crashClassification(category: string, defaultConfidence: string, fatality: boolean | undefined): Classification {
     return {
         category,
         crashLikely: fatality !== false,
         confidence: fatality === false ? 'medium' : defaultConfidence,
     };
 }
-function classify(snapshot) {
+function classify(snapshot: RuntimeSnapshot): Classification {
     const stopped = snapshot.stopped;
     const text = diagnosticText(snapshot);
     const fatality = stopped?.reason === 'exception' ? exceptionFatality(snapshot) : undefined;
@@ -96,7 +114,7 @@ function classify(snapshot) {
             return { category: 'unknown', crashLikely: false, confidence: 'low' };
     }
 }
-function parseAddress(value) {
+function parseAddress(value: string | undefined): bigint | undefined {
     if (!value)
         return undefined;
     const compact = value.trim().replace(/[`'_\s]/g, '');
@@ -110,13 +128,13 @@ function parseAddress(value) {
         return undefined;
     }
 }
-export function correlateSourceDisassembly(snapshot) {
+export function correlateSourceDisassembly(snapshot: RuntimeSnapshot) {
     const instructions = snapshot.disassembly ?? [];
     const ip = snapshot.frame.instructionPointerReference;
     const ipAddress = parseAddress(ip);
     let currentIndex = instructions.findIndex((instruction) => instruction.address.toLowerCase() === ip?.toLowerCase());
     if (currentIndex < 0 && ipAddress !== undefined && instructions.length > 0) {
-        let nearestDistance;
+        let nearestDistance: bigint | undefined;
         for (let index = 0; index < instructions.length; index += 1) {
             const address = parseAddress(instructions[index]?.address);
             if (address === undefined)
@@ -153,12 +171,12 @@ export function correlateSourceDisassembly(snapshot) {
         nextInstructions: currentIndex >= 0 ? instructions.slice(currentIndex + 1, currentIndex + 4) : [],
     };
 }
-function looksPointerLike(variable) {
+function looksPointerLike(variable: DebugProtocol.Variable): boolean {
     return /\*|pointer|ptr\b|address|handle|\bthis\b|\bself\b|object|reference/i.test(`${variable.name} ${variable.type ?? ''}`);
 }
-function suspiciousValues(snapshot) {
-    const output = [];
-    const scan = (scope, variables) => {
+function suspiciousValues(snapshot: RuntimeSnapshot): SuspiciousVariable[] {
+    const output: SuspiciousVariable[] = [];
+    const scan = (scope: string, variables: DebugProtocol.Variable[]) => {
         for (const variable of variables) {
             const normalized = variable.value.trim().toLowerCase();
             const compact = normalized.replace(/[`'_\s]/g, '');
@@ -191,12 +209,12 @@ function suspiciousValues(snapshot) {
         scan('register', snapshot.registers);
     return output;
 }
-function locationText(snapshot) {
+function locationText(snapshot: RuntimeSnapshot): string {
     const path = snapshot.frame.source?.path ?? snapshot.frame.source?.name;
     return path ? `${snapshot.frame.name} at ${path}:${snapshot.frame.line}` : snapshot.frame.name;
 }
-function buildHypotheses(snapshot, classification, suspicious) {
-    const hypotheses = [];
+function buildHypotheses(snapshot: RuntimeSnapshot, classification: Classification, suspicious: SuspiciousVariable[]): CrashHypothesis[] {
+    const hypotheses: CrashHypothesis[] = [];
     const nullValues = suspicious.filter((item) => item.reason === 'null-like-pointer');
     const nullLocals = nullValues.filter((item) => item.scope === 'local');
     const nullRegisters = nullValues.filter((item) => item.scope === 'register');
@@ -361,7 +379,7 @@ function buildHypotheses(snapshot, classification, suspicious) {
     }
     return hypotheses;
 }
-export function analyzeRuntimeSnapshot(snapshot) {
+export function analyzeRuntimeSnapshot(snapshot: RuntimeSnapshot) {
     const classification = classify(snapshot);
     const suspicious = suspiciousValues(snapshot);
     const correlation = correlateSourceDisassembly(snapshot);
