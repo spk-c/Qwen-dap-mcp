@@ -1,5 +1,15 @@
 import path from 'node:path';
 import type { DebugProtocol } from '@vscode/debugprotocol';
+import type { DapSession } from '../dap/session.js';
+import { analyzeRuntimeSnapshot } from './analyze-snapshot.js';
+type RuntimeSnapshot = Awaited<ReturnType<DapSession['runtimeSnapshot']>>;
+type BaseDiagnosis = ReturnType<typeof analyzeRuntimeSnapshot>;
+type OperandAnalysis = ReturnType<typeof analyzeInstructionOperands> & { likelyFaultOperand?: { register: string; value?: string } };
+type CallChain = ReturnType<typeof analyzeCallChain>;
+type ProjectFrameIdentity = { function: string; sourcePath?: string; line: number };
+type DiagnosisWithProjectFrame = BaseDiagnosis & { projectFrame: ProjectFrameIdentity };
+type VerificationTerminal = { event: string; exitCode?: number };
+
 
 type ProjectHints = {
     projectRoots?: string[];
@@ -449,10 +459,10 @@ export function analyzeCallChain(selection: ProjectSelection, evidence: FrameEvi
         },
     };
 }
-function primaryHypothesis(base) {
+function primaryHypothesis(base: BaseDiagnosis) {
     return base.hypotheses.find((item) => item.confidence === 'high') ?? base.hypotheses[0];
 }
-function suggestedChanges(base, operand, chain) {
+function suggestedChanges(base: BaseDiagnosis, operand: OperandAnalysis, chain: CallChain): string[] {
     const output = [];
     const variableBinding = operand.variableBindings[0];
     const suspiciousOperand = operand.likelyFaultOperand;
@@ -493,7 +503,7 @@ function suggestedChanges(base, operand, chain) {
     }
     return [...new Set(output)].slice(0, 6);
 }
-function buildFixWorkflow(base, selection, operand, chain) {
+function buildFixWorkflow(base: BaseDiagnosis, selection: ProjectSelection, operand: OperandAnalysis, chain: CallChain) {
     const frame = selection.selected.frame;
     const source = sourcePath(frame);
     const hypothesis = primaryHypothesis(base);
@@ -574,7 +584,7 @@ function buildFixWorkflow(base, selection, operand, chain) {
         ],
     };
 }
-export function createVerificationBaseline(diagnosis) {
+export function createVerificationBaseline(diagnosis: DiagnosisWithProjectFrame) {
     return {
         classification: diagnosis.classification.category,
         crashLikely: diagnosis.classification.crashLikely,
@@ -586,7 +596,7 @@ export function createVerificationBaseline(diagnosis) {
         suspiciousNames: diagnosis.suspiciousValues.map((item) => item.name).slice(0, 12),
     };
 }
-export function compareVerificationBaseline(baseline, current, terminal) {
+export function compareVerificationBaseline(baseline: ReturnType<typeof createVerificationBaseline>, current?: DiagnosisWithProjectFrame, terminal?: VerificationTerminal) {
     if (terminal?.event === 'exited' && terminal.exitCode === 0) {
         return {
             verdict: 'fixed',
@@ -640,7 +650,7 @@ export function compareVerificationBaseline(baseline, current, terminal) {
         ],
     };
 }
-export function buildIntelligentDiagnosis(snapshot, base, selection, evidence) {
+export function buildIntelligentDiagnosis(snapshot: RuntimeSnapshot, base: BaseDiagnosis, selection: ProjectSelection, evidence: FrameEvidence[]) {
     const selectedEvidence = evidence.find((item) => item.index === selection.selected.index) ?? {
         index: selection.selected.index,
         frame: selection.selected.frame,
