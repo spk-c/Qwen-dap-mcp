@@ -4,7 +4,7 @@ import type { DapSession } from '../dap/session.js';
 import { analyzeRuntimeSnapshot } from './analyze-snapshot.js';
 type RuntimeSnapshot = Awaited<ReturnType<DapSession['runtimeSnapshot']>>;
 type BaseDiagnosis = ReturnType<typeof analyzeRuntimeSnapshot>;
-type OperandAnalysis = ReturnType<typeof analyzeInstructionOperands>;
+type OperandAnalysis = ReturnType<typeof analyzeInstructionOperands> & { likelyFaultOperand?: { register: string; value?: string } };
 type CallChain = ReturnType<typeof analyzeCallChain>;
 type ProjectFrameIdentity = { function: string; sourcePath?: string; line: number };
 type DiagnosisWithProjectFrame = BaseDiagnosis & { projectFrame: ProjectFrameIdentity };
