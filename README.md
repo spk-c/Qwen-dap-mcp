@@ -246,7 +246,7 @@ npm ci
 npm run check
 ```
 
-`src/**/*.ts` is the source of truth for 51 runtime modules; generated JavaScript mirrors and declarations are checked by CI. The **full** TypeScript `strict: true` migration remains in progress ([issue #24](https://github.com/spk-c/Qwen-dap-mcp/issues/24)); passing CI is not a claim of zero strict-mode diagnostics.
+`src/**/*.ts` is the source of truth for 51 runtime modules; generated JavaScript mirrors and declarations are checked by CI. The **full** TypeScript `strict: true` migration is complete ([issue #24](https://github.com/spk-c/Qwen-dap-mcp/issues/24), PRs #52–#56). CI enforces zero strict compiler diagnostics; native debugger support remains limited to the adapters and scenarios tested in CI.
 
 See [CONTRIBUTING.md](https://github.com/spk-c/Qwen-dap-mcp/blob/main/CONTRIBUTING.md) before opening a pull request.
 

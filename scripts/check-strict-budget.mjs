@@ -1,11 +1,16 @@
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 
-// Temporary migration ceiling, tightened whenever a checked-in batch reduces
-// full strict compiler diagnostics. Strict mode is enabled; zero is required for #24.
+// Historical script name retained for compatibility. Strict migration is complete;
+// zero compiler diagnostics and strict=true in tsconfig are mandatory.
 const MAX_STRICT_DIAGNOSTICS = 0;
 const root = fileURLToPath(new URL('../', import.meta.url));
+const tsconfig = JSON.parse(readFileSync(join(root, 'tsconfig.json'), 'utf8'));
+if (tsconfig.compilerOptions?.strict !== true) {
+  throw new Error('Full strict TypeScript checking must remain enabled in tsconfig.json.');
+}
 const typescript = join(root, 'node_modules', 'typescript', 'bin', 'tsc');
 const result = spawnSync(process.execPath, [
   typescript, '--project', join(root, 'tsconfig.json'),
@@ -50,5 +55,5 @@ if (errors.length > MAX_STRICT_DIAGNOSTICS) {
   process.exitCode = 1;
 }
 if (errors.length === 0) {
-  console.log('Full strict TypeScript checking passes; remove the temporary budget and enable strict=true in tsconfig.json.');
+  console.log('Full strict TypeScript checking passes with strict=true and zero diagnostics.');
 }
