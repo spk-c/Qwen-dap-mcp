@@ -22,7 +22,8 @@ function isSensitiveLogKey(key) {
     return ['password', 'passwd', 'secret', 'token', 'apikey', 'authorization', 'credential', 'cookie', 'privatekey'].some((word) => compact.includes(word));
 }
 function normalizeLogValue(value, ancestors) {
-    if (typeof value === 'string') return redactLogText(value);
+    if (typeof value === 'string')
+        return redactLogText(value);
     if (typeof value === 'bigint') {
         return value.toString();
     }
