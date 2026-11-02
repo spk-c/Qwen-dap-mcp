@@ -1,4 +1,16 @@
 import type { DebugProtocol } from '@vscode/debugprotocol';
+import type { DapSession } from '../dap/session.js';
+type RuntimeSnapshot = Awaited<ReturnType<DapSession['runtimeSnapshot']>>;
+type VariableChange = {
+    key: string;
+    name: string;
+    status: string;
+    type?: string;
+    baseline?: string;
+    candidate?: string;
+    reason?: string;
+};
+
 const ADDRESS_RE = /^(?:0x)?[0-9a-f]{6,}$/i;
 const NULL_RE = /^(?:0x)?0+$/i;
 function normalizeSourcePath(value: string | null | undefined): string | undefined {
@@ -58,7 +70,7 @@ function firstVariablesByKey(variables: DebugProtocol.Variable[]): Map<string, D
     }
     return output;
 }
-function diffVariable(key: string, baseline?: DebugProtocol.Variable, candidate?: DebugProtocol.Variable) {
+function diffVariable(key: string, baseline?: DebugProtocol.Variable, candidate?: DebugProtocol.Variable): VariableChange {
     const name = baseline?.name ?? candidate?.name ?? key;
     const type = baseline?.type ?? candidate?.type;
     if (!baseline) {
@@ -103,7 +115,7 @@ function diffVariable(key: string, baseline?: DebugProtocol.Variable, candidate?
         ...(type ? { type } : {}),
     };
 }
-function diffVariables(baseline: DebugProtocol.Variable[], candidate: DebugProtocol.Variable[]) {
+function diffVariables(baseline: DebugProtocol.Variable[], candidate: DebugProtocol.Variable[]): VariableChange[] {
     const left = firstVariablesByKey(baseline);
     const right = firstVariablesByKey(candidate);
     const keys = [...new Set([...left.keys(), ...right.keys()])].sort();
@@ -113,7 +125,7 @@ function moduleKey(module: DebugProtocol.Module): string {
     const path = normalizeSourcePath(module.path);
     return path || module.name || String(module.id);
 }
-function diffModules(baseline, candidate) {
+function diffModules(baseline?: DebugProtocol.Module[], candidate?: DebugProtocol.Module[]) {
     if (!baseline && !candidate)
         return { status: 'unavailable', added: [], removed: [] };
     const left = new Set((baseline ?? []).map(moduleKey));
@@ -126,9 +138,9 @@ function diffModules(baseline, candidate) {
         removed,
     };
 }
-function diffStack(baseline, candidate) {
+function diffStack(baseline: RuntimeSnapshot, candidate: RuntimeSnapshot) {
     const count = Math.max(baseline.stack.length, candidate.stack.length);
-    const frames = [];
+    const frames: Array<{ index: number; status: string; baseline?: ReturnType<typeof frameIdentity>; candidate?: ReturnType<typeof frameIdentity> }> = [];
     for (let index = 0; index < count; index += 1) {
         const left = frameIdentity(baseline.stack[index]);
         const right = frameIdentity(candidate.stack[index]);
@@ -143,7 +155,7 @@ function diffStack(baseline, candidate) {
     }
     return { status: frames.some((frame) => frame.status !== 'same') ? 'changed' : 'same', frames };
 }
-function firstMeaningful(locals, registers, exceptionStatus, baselineException, candidateException, stack, baseline, candidate, modules) {
+function firstMeaningful(locals: VariableChange[], registers: VariableChange[], exceptionStatus: string, baselineException: RuntimeSnapshot['exception'], candidateException: RuntimeSnapshot['exception'], stack: ReturnType<typeof diffStack>, baseline: RuntimeSnapshot, candidate: RuntimeSnapshot, modules: ReturnType<typeof diffModules>) {
     const local = locals.find((item) => item.status === 'changed' || item.status === 'added' || item.status === 'removed');
     if (local)
         return { category: 'local', key: local.key, status: local.status, baseline: local.baseline, candidate: local.candidate, ...(local.reason ? { reason: local.reason } : {}) };
@@ -164,7 +176,7 @@ function firstMeaningful(locals, registers, exceptionStatus, baselineException, 
     }
     return undefined;
 }
-export function compareRuntimeSnapshots(baseline, candidate) {
+export function compareRuntimeSnapshots(baseline: RuntimeSnapshot, candidate: RuntimeSnapshot) {
     const locals = diffVariables(baseline.locals, candidate.locals);
     const registers = diffVariables(baseline.registers, candidate.registers);
     const stack = diffStack(baseline, candidate);
