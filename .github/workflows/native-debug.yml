@@ -15,7 +15,7 @@ jobs:
         adapter: [gdb, lldb-dap]
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
       - name: Install system native debuggers
@@ -52,7 +52,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
       - name: Download CodeLLDB from official GitHub release
