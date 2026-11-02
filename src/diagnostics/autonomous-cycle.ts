@@ -1,7 +1,74 @@
 import { createHash } from 'node:crypto';
 import { normalizeDiagnosticPath } from './path-normalization.js';
+type VerificationBaseline = {
+    classification: string;
+    crashLikely: boolean;
+    faultFunction: string;
+    projectFunction: string;
+    projectSourcePath?: string;
+    projectLine: number;
+    hypothesisKinds: string[];
+    suspiciousNames: string[];
+};
+type AutonomousHistoryEntry = {
+    iteration: number;
+    phase: string;
+    fingerprint: string;
+    projectFunction?: string;
+    projectSourcePath?: string;
+    projectLine?: number;
+    summary: string;
+    verdict?: string;
+    confidence?: string;
+};
+type AutonomousState = {
+    schemaVersion: number;
+    iteration: number;
+    maxIterations: number;
+    status: string;
+    rootBaseline: VerificationBaseline;
+    activeBaseline: VerificationBaseline;
+    rootFingerprint: string;
+    activeFingerprint: string;
+    history: AutonomousHistoryEntry[];
+};
+type Diagnosis = {
+    summary: string;
+    verificationBaseline: VerificationBaseline;
+    classification: { crashLikely: boolean };
+    projectFrame: { index: number; function: string; sourcePath?: string; line: number; confidence: string };
+    hypotheses: Array<{ confidence: string }>;
+    operandAnalysis: {
+        likelyFaultOperand?: { register: string; value?: string };
+        variableBindings: Array<{ register: string; variable: string; variableValue: string }>;
+        rawInstruction?: string;
+    };
+    callChain: {
+        rootCauseCandidate: { confidence: string; frame: { function: string } };
+        provenance: Array<{ value: string; confidence: string; frames: Array<{ index: number; function: string; variables: string[] }> }>;
+        frames: Array<{ index: number; function: string; sourcePath?: string; line: number; projectControlled: boolean }>;
+    };
+    fixWorkflow: { suggestedChanges: string[] };
+};
+type Verification = { verdict: string; confidence: string; evidence: string[] };
+type ActionOptions = {
+    status?: string;
+    requires?: string[];
+    input?: Record<string, unknown>;
+    expected: string;
+    successCriteria: string[];
+    evidence?: string[];
+};
+type RuntimeTrailEntry = {
+    frameIndex: number;
+    function: string;
+    variables: string[];
+    value?: string;
+    role: string;
+};
+
 const TERMINAL_STATUSES = new Set(['fixed', 'budget-exhausted', 'blocked']);
-function normalizedValue(value) {
+function normalizedValue(value: string | undefined): string | undefined {
     if (!value)
         return undefined;
     const compact = value.trim().toLowerCase().replace(/[`'_\s]/g, '');
@@ -24,7 +91,7 @@ function normalizedValue(value) {
     }
     return compact;
 }
-export function baselineFingerprint(baseline) {
+export function baselineFingerprint(baseline: VerificationBaseline): string {
     const canonical = {
         classification: baseline.classification,
         crashLikely: baseline.crashLikely,
@@ -37,7 +104,7 @@ export function baselineFingerprint(baseline) {
     };
     return createHash('sha256').update(JSON.stringify(canonical)).digest('hex').slice(0, 16);
 }
-export function validateAutonomousAgentState(state) {
+export function validateAutonomousAgentState(state: AutonomousState): void {
     if (state.schemaVersion !== 1) {
         throw new Error(`Unsupported autonomous agent state schema version: ${state.schemaVersion}`);
     }
@@ -62,12 +129,12 @@ export function validateAutonomousAgentState(state) {
         throw new Error(`Autonomous agent state active fingerprint mismatch: expected ${expectedActiveFingerprint}, got ${state.activeFingerprint}.`);
     }
 }
-function boundedMaxIterations(value) {
+function boundedMaxIterations(value: number | undefined): number {
     if (value === undefined || !Number.isFinite(value))
         return 3;
     return Math.min(10, Math.max(1, Math.trunc(value)));
 }
-function diagnosisHistory(diagnosis, fingerprint, iteration = 0) {
+function diagnosisHistory(diagnosis: Diagnosis, fingerprint: string, iteration = 0): AutonomousHistoryEntry {
     return {
         iteration,
         phase: 'diagnosis',
@@ -78,7 +145,7 @@ function diagnosisHistory(diagnosis, fingerprint, iteration = 0) {
         summary: diagnosis.summary,
     };
 }
-function verificationHistory(state, verification, diagnosis) {
+function verificationHistory(state: AutonomousState, verification: Verification, diagnosis?: Diagnosis): AutonomousHistoryEntry {
     const fingerprint = diagnosis
         ? baselineFingerprint(diagnosis.verificationBaseline)
         : state.activeFingerprint;
@@ -98,7 +165,7 @@ function verificationHistory(state, verification, diagnosis) {
         summary: verification.evidence.join(' '),
     };
 }
-export function evidenceReady(diagnosis) {
+export function evidenceReady(diagnosis: Diagnosis): boolean {
     if (!diagnosis.classification.crashLikely)
         return false;
     if (!diagnosis.projectFrame.sourcePath)
@@ -108,7 +175,7 @@ export function evidenceReady(diagnosis) {
     return diagnosis.hypotheses.some((item) => item.confidence === 'high' || item.confidence === 'medium')
         || diagnosis.callChain.rootCauseCandidate.confidence === 'high';
 }
-function action(iteration, type, owner, instruction, options) {
+function action(iteration: number, type: string, owner: string, instruction: string, options: ActionOptions) {
     return {
         id: `${iteration}:${type}`,
         type,
@@ -124,7 +191,7 @@ function action(iteration, type, owner, instruction, options) {
         ...(options.evidence ? { evidence: options.evidence } : {}),
     };
 }
-export function buildRootCauseBacktrack(diagnosis) {
+export function buildRootCauseBacktrack(diagnosis: Diagnosis) {
     const operand = diagnosis.operandAnalysis.likelyFaultOperand;
     const binding = operand
         ? diagnosis.operandAnalysis.variableBindings.find((candidate) => candidate.register.toLowerCase() === operand.register.toLowerCase())
@@ -133,7 +200,7 @@ export function buildRootCauseBacktrack(diagnosis) {
     const matchingTrail = targetValue
         ? diagnosis.callChain.provenance.find((item) => normalizedValue(item.value) === targetValue)
         : undefined;
-    const runtimeTrail = [];
+    const runtimeTrail: RuntimeTrailEntry[] = [];
     if (matchingTrail) {
         const frames = [...matchingTrail.frames].sort((a, b) => a.index - b.index);
         frames.forEach((frame, index) => {
@@ -192,7 +259,7 @@ export function buildRootCauseBacktrack(diagnosis) {
         limitation: 'This is runtime provenance, not static source dataflow. Exact assignments/returns must be confirmed by reading the listed source frames before editing.',
     };
 }
-export function verificationQuality(verification) {
+export function verificationQuality(verification: Verification) {
     let score = 25;
     let reproduction = 'incomplete';
     let rootCrash = 'unknown';
@@ -236,7 +303,7 @@ export function verificationQuality(verification) {
         note: 'The score measures debugger evidence only. Build success, project tests and exact reproduction inputs remain external to qwen-dap-mcp and must be reported by the coding/build agent before claiming end-to-end verification.',
     };
 }
-function evidenceActions(diagnosis, iteration) {
+function evidenceActions(diagnosis: Diagnosis, iteration: number) {
     const evidence = [
         `projectFrame confidence=${diagnosis.projectFrame.confidence}`,
         `project source=${diagnosis.projectFrame.sourcePath ?? 'missing'}`,
@@ -252,7 +319,7 @@ function evidenceActions(diagnosis, iteration) {
             evidence,
         })];
 }
-function fixActions(diagnosis, state, broaden = false) {
+function fixActions(diagnosis: Diagnosis, state: AutonomousState, broaden = false) {
     const iteration = state.iteration;
     const location = `${diagnosis.projectFrame.sourcePath ?? diagnosis.projectFrame.function}:${diagnosis.projectFrame.line}`;
     const backtrack = buildRootCauseBacktrack(diagnosis);
@@ -319,7 +386,7 @@ function fixActions(diagnosis, state, broaden = false) {
     }));
     return output;
 }
-export function startAutonomousCycle(diagnosis, maxIterations) {
+export function startAutonomousCycle(diagnosis: Diagnosis, maxIterations?: number) {
     const baseline = diagnosis.verificationBaseline;
     const fingerprint = baselineFingerprint(baseline);
     const ready = evidenceReady(diagnosis);
@@ -342,7 +409,7 @@ export function startAutonomousCycle(diagnosis, maxIterations) {
         rootCauseBacktrack: buildRootCauseBacktrack(diagnosis),
     };
 }
-export function refreshAutonomousEvidence(previous, diagnosis) {
+export function refreshAutonomousEvidence(previous: AutonomousState, diagnosis: Diagnosis) {
     validateAutonomousAgentState(previous);
     if (TERMINAL_STATUSES.has(previous.status)) {
         throw new Error(`Cannot refresh evidence for terminal autonomous agent state '${previous.status}'.`);
@@ -372,19 +439,19 @@ export function refreshAutonomousEvidence(previous, diagnosis) {
         rootCauseBacktrack: buildRootCauseBacktrack(diagnosis),
     };
 }
-function sameFailedFingerprintCount(state) {
+function sameFailedFingerprintCount(state: AutonomousState): number {
     return state.history.filter((item) => item.phase === 'verification'
         && item.verdict === 'not-fixed'
         && item.fingerprint === state.activeFingerprint).length;
 }
-function stopAction(state, instruction, evidence) {
+function stopAction(state: AutonomousState, instruction: string, evidence: string[]) {
     return action(state.iteration, 'stop-and-report', 'coding-agent', instruction, {
         expected: 'A final evidence report with no further autonomous source edits.',
         successCriteria: ['report preserves fingerprints and verification evidence'],
         evidence,
     });
 }
-export function advanceAutonomousCycle(previous, verification, currentDiagnosis) {
+export function advanceAutonomousCycle(previous: AutonomousState, verification: Verification, currentDiagnosis?: Diagnosis) {
     validateAutonomousAgentState(previous);
     if (TERMINAL_STATUSES.has(previous.status)) {
         throw new Error(`Cannot advance terminal autonomous agent state '${previous.status}'. Start a new cycle instead.`);
