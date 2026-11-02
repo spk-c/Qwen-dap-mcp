@@ -1,0 +1,48 @@
+name: macOS native compatibility (experimental)
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - name: Reproducible install and full package verification
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run check
+          npm run check:pack
+          git diff --exit-code -- dist src
+      - name: Compile native debugger fixture on macOS
+        run: |
+          mkdir -p integration/bin
+          clang++ -std=c++17 -g -O0 -fno-omit-frame-pointer integration/fixture/native-debug.cpp -o integration/bin/native-debug
+      - name: Detect Apple LLDB DAP adapter
+        id: adapter
+        shell: bash
+        run: |
+          if command -v lldb-dap >/dev/null 2>&1; then
+            path=$(command -v lldb-dap)
+          elif xcrun --find lldb-dap >/dev/null 2>&1; then
+            path=$(xcrun --find lldb-dap)
+          else
+            echo "No LLDB DAP adapter installed on this runner; native E2E not claimed." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "path=$path" >> "$GITHUB_OUTPUT"
+      - name: Real LLDB-DAP smoke (experimental; does not gate release)
+        if: steps.adapter.outputs.path != ''
+        continue-on-error: true
+        env:
+          RUN_NATIVE_DEBUGGER_TESTS: '1'
+          NATIVE_DAP_ADAPTER: 'lldb-dap'
+          NATIVE_DAP_PATH: ${{ steps.adapter.outputs.path }}
+          NATIVE_DAP_BINARY: ${{ github.workspace }}/integration/bin/native-debug
+        run: node --test integration/native-debug.mjs
