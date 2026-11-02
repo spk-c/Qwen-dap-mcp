@@ -32,11 +32,11 @@ const byFile = new Map();
 for (const line of errors) {
   const match = line.match(/^(.+?)\((\d+),(\d+)\): error (TS\d+): (.+)$/);
   if (!match) continue;
-  const [, file, line, column, code, detail] = match;
+  const [, file, lineNumber, column, code, detail] = match;
   const entry = byFile.get(file) ?? { count: 0, codes: new Map(), samples: [] };
   entry.count += 1;
   entry.codes.set(code, (entry.codes.get(code) ?? 0) + 1);
-  if (entry.samples.length < 3) entry.samples.push(line + ':' + column + ' ' + code + ': ' + detail.slice(0, 140));
+  if (entry.samples.length < 3) entry.samples.push(lineNumber + ':' + column + ' ' + code + ': ' + detail.slice(0, 140));
   byFile.set(file, entry);
 }
 console.log('Most affected modules:');
