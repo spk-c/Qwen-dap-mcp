@@ -1,9 +1,44 @@
 import * as z from 'zod/v4';
+import type { McpServer } from '@modelcontextprotocol/server';
+import type { DebugProtocol } from '@vscode/debugprotocol';
+import type { GuardedDapSession } from '../dap/guarded-session.js';
+import type { RuntimeSnapshotOptions } from '../dap/session.js';
+
+type WatchAccess = 'read' | 'write' | 'readWrite';
+type WriterOptions = {
+    name: string;
+    variablesReference?: number;
+    frameId?: number;
+    accessType?: WatchAccess;
+    condition?: string;
+    hitCondition?: string;
+    threadId?: number;
+    timeoutMs?: number;
+    replaceExistingDataBreakpoints?: boolean;
+    snapshot?: RuntimeSnapshotOptions;
+};
+type ResumeBody = {
+    reason?: string;
+    description?: string;
+    text?: string;
+    threadId?: number;
+    exitCode?: number;
+    cancelled?: boolean;
+};
+type ResumeOutcome = { event: 'stopped' | 'exited' | 'terminated'; body?: ResumeBody };
+type InstalledWatch = {
+    strategy: string;
+    resolution: unknown;
+    installed: unknown;
+    priorDataBreakpointCount: number;
+    cleanup: (frameId: number) => Promise<string | undefined>;
+};
+
 import { correlateSourceDisassembly } from '../diagnostics/analyze-snapshot.js';
 import { DapError } from '../dap/errors.js';
 import { DEBUG_SESSION_CONTROL_ANNOTATIONS } from './tool-annotations.js';
 import { debugFindWriterOutputSchema, structuredResult } from './agent-output.js';
-function isDataBreakpointStop(body) {
+function isDataBreakpointStop(body: ResumeBody | undefined): boolean {
     const stopped = body;
     const text = [stopped?.reason, stopped?.description, stopped?.text]
         .filter((value) => typeof value === 'string')
@@ -11,7 +46,7 @@ function isDataBreakpointStop(body) {
         .toLowerCase();
     return /data\s*breakpoint|watchpoint/.test(text);
 }
-function validateGdbWatchExpression(expression) {
+function validateGdbWatchExpression(expression: string): string {
     const trimmed = expression.trim();
     if (!trimmed)
         throw new DapError('GDB writer expression must not be empty.');
@@ -22,18 +57,18 @@ function validateGdbWatchExpression(expression) {
     }
     return trimmed;
 }
-function gdbWatchCommand(accessType, expression) {
+function gdbWatchCommand(accessType: WatchAccess, expression: string): string {
     const command = accessType === 'read' ? 'rwatch' : accessType === 'readWrite' ? 'awatch' : 'watch';
     return `${command} ${validateGdbWatchExpression(expression)}`;
 }
-function parseGdbWatchpointId(result) {
+function parseGdbWatchpointId(result: string): number | undefined {
     const match = result.match(/\b(?:hardware\s+)?(?:access\s+|read\s+)?watchpoint(?:\s+number)?\s+(\d+)\b/i);
     if (!match)
         return undefined;
     const value = Number(match[1]);
     return Number.isSafeInteger(value) && value > 0 ? value : undefined;
 }
-function parseGdbWatchpointIdFromListing(result, expression) {
+function parseGdbWatchpointIdFromListing(result: string, expression: string): number | undefined {
     const normalizedExpression = expression.trim().toLowerCase();
     for (const line of result.split(/\r?\n/)) {
         const lowered = line.toLowerCase();
@@ -46,18 +81,18 @@ function parseGdbWatchpointIdFromListing(result, expression) {
     }
     return undefined;
 }
-function createResumeWait(session, timeoutMs) {
+function createResumeWait(session: GuardedDapSession, timeoutMs: number) {
     let settled = false;
-    let timer;
-    let resolvePromise;
-    let rejectPromise;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let resolvePromise!: (value: ResumeOutcome) => void;
+    let rejectPromise!: (reason?: unknown) => void;
     const cleanup = () => {
         clearTimeout(timer);
         session.connection.off('event', onEvent);
         session.connection.off('adapterExit', onAdapterExit);
         session.connection.off('adapterError', onAdapterError);
     };
-    const finish = (outcome, error?: Error) => {
+    const finish = (outcome: ResumeOutcome | undefined, error?: Error) => {
         if (settled)
             return;
         settled = true;
@@ -65,16 +100,16 @@ function createResumeWait(session, timeoutMs) {
         if (error)
             rejectPromise(error);
         else
-            resolvePromise(outcome);
+            resolvePromise(outcome!);
     };
-    const onEvent = (event) => {
+    const onEvent = (event: { event: string; body?: ResumeBody }) => {
         if (event.event !== 'stopped' && event.event !== 'exited' && event.event !== 'terminated')
             return;
         finish({ event: event.event, body: event.body });
     };
     const onAdapterExit = () => finish(undefined, new DapError('DAP adapter exited while waiting for writer watch outcome.'));
-    const onAdapterError = (error) => finish(undefined, error instanceof Error ? error : new DapError('DAP adapter failed while waiting for writer watch outcome.'));
-    const promise = new Promise((resolve, reject) => {
+    const onAdapterError = (error: unknown) => finish(undefined, error instanceof Error ? error : new DapError('DAP adapter failed while waiting for writer watch outcome.'));
+    const promise = new Promise<ResumeOutcome>((resolve, reject) => {
         resolvePromise = resolve;
         rejectPromise = reject;
         timer = setTimeout(() => finish(undefined, new DapError(`Timed out after ${timeoutMs} ms waiting for writer watch outcome.`)), timeoutMs);
@@ -93,7 +128,7 @@ function createResumeWait(session, timeoutMs) {
         },
     };
 }
-async function continueToOutcome(session, threadId, timeoutMs) {
+async function continueToOutcome(session: GuardedDapSession, threadId: number, timeoutMs: number): Promise<ResumeOutcome> {
     const waiter = createResumeWait(session, timeoutMs);
     try {
         await session.continueExecution(threadId, false, timeoutMs);
@@ -104,7 +139,7 @@ async function continueToOutcome(session, threadId, timeoutMs) {
         throw error;
     }
 }
-async function restoreDataBreakpoints(session, previous) {
+async function restoreDataBreakpoints(session: GuardedDapSession, previous: DebugProtocol.DataBreakpoint[]): Promise<string | undefined> {
     try {
         await session.setDataBreakpoints(previous);
         return undefined;
@@ -113,7 +148,7 @@ async function restoreDataBreakpoints(session, previous) {
         return error instanceof Error ? error.message : String(error);
     }
 }
-async function installNativeDataBreakpoint(session, options, frameId, requestedAccess) {
+async function installNativeDataBreakpoint(session: GuardedDapSession, options: WriterOptions, frameId: number, requestedAccess: WatchAccess): Promise<InstalledWatch> {
     const resolution = await session.dataBreakpointInfo(options.name, options.variablesReference, options.variablesReference === undefined ? frameId : undefined);
     if (!resolution.dataId) {
         throw new DapError(`The active debugger cannot create a data breakpoint for '${options.name}': ${resolution.description}`);
@@ -140,7 +175,7 @@ async function installNativeDataBreakpoint(session, options, frameId, requestedA
         cleanup: async () => restoreDataBreakpoints(session, previous),
     };
 }
-async function installGdbWatchpoint(session, options, frameId, requestedAccess) {
+async function installGdbWatchpoint(session: GuardedDapSession, options: WriterOptions, frameId: number, requestedAccess: WatchAccess): Promise<InstalledWatch> {
     if (options.variablesReference !== undefined) {
         throw new DapError('GDB 14/15 DAP does not advertise native data-breakpoint resolution. For the GDB watch fallback, pass name as a debugger-visible expression and omit variablesReference.');
     }
@@ -178,7 +213,7 @@ async function installGdbWatchpoint(session, options, frameId, requestedAccess) 
             result: response.result,
         },
         priorDataBreakpointCount: session.dataBreakpointConfiguration().length,
-        cleanup: async (currentFrameId) => {
+        cleanup: async (currentFrameId: number) => {
             try {
                 await session.evaluate(`delete ${watchpointId}`, currentFrameId, 'repl');
                 return undefined;
@@ -189,7 +224,7 @@ async function installGdbWatchpoint(session, options, frameId, requestedAccess) 
         },
     };
 }
-async function installWriterWatch(session, options, frameId, requestedAccess) {
+async function installWriterWatch(session: GuardedDapSession, options: WriterOptions, frameId: number, requestedAccess: WatchAccess): Promise<InstalledWatch> {
     const state = session.snapshot();
     if (state.capabilities?.supportsDataBreakpoints === true) {
         return installNativeDataBreakpoint(session, options, frameId, requestedAccess);
@@ -199,7 +234,7 @@ async function installWriterWatch(session, options, frameId, requestedAccess) {
     }
     throw new DapError(`The active DAP adapter '${state.adapterId ?? 'unknown'}' does not advertise data-breakpoint support, so debug_find_writer cannot safely install a writer watch.`);
 }
-export async function findWriter(session, options) {
+export async function findWriter(session: GuardedDapSession, options: WriterOptions) {
     return session.runExclusiveLifecycle('find writer', async () => {
         if (session.isPostmortem()) {
             throw new DapError('debug_find_writer requires a live stopped target; a crash dump is frozen and cannot trigger a data breakpoint.');
@@ -277,13 +312,13 @@ export async function findWriter(session, options) {
         };
     });
 }
-function result(value) {
+function result(value: unknown) {
     return structuredResult(value);
 }
-function errorResult(error) {
-    return { content: [{ type: 'text', text: error instanceof Error ? error.message : String(error) }], isError: true };
+function errorResult(error: unknown) {
+    return { content: [{ type: 'text' as const, text: error instanceof Error ? error.message : String(error) }], isError: true };
 }
-export function registerFindWriterTool(server, session) {
+export function registerFindWriterTool(server: McpServer, session: GuardedDapSession): void {
     server.registerTool('debug_find_writer', {
         title: 'Find Runtime Writer',
         description: 'Temporarily watch a variable or debugger expression, resume an authorized live target, and capture the first resulting stop to identify the immediate writer candidate. Use this after a stopped-state diagnosis suggests a value was corrupted and runtime provenance is needed; do not use it for crash dumps or when resuming is unsafe. Adapters with DAP data-breakpoint support use that protocol directly; GDB 14/15 uses a bounded watch/rwatch/awatch command through DAP REPL because those releases do not advertise native data breakpoints. The tool removes only the temporary watch it created and never automatically continues through an unrelated stop.',
@@ -310,7 +345,7 @@ export function registerFindWriterTool(server, session) {
                 includeExceptionInfo: z.boolean().default(true).describe('Collect exception information if the resulting stop is an exception rather than the expected watchpoint.'),
             }).optional().describe('Bounds for the evidence snapshot captured after execution stops.'),
         }),
-    }, async (options) => {
+    }, async (options: WriterOptions) => {
         try {
             return result(await findWriter(session, options));
         }
