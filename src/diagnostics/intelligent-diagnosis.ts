@@ -1,4 +1,25 @@
 import path from 'node:path';
+import type { DebugProtocol } from '@vscode/debugprotocol';
+
+type ProjectHints = {
+    projectRoots?: string[];
+    projectModules?: string[];
+    cwd?: string;
+    program?: string;
+};
+type FrameEvidence = {
+    index: number;
+    frame: DebugProtocol.StackFrame;
+    locals: DebugProtocol.Variable[];
+    registers: DebugProtocol.Variable[];
+    disassembly?: DebugProtocol.DisassembledInstruction[];
+};
+type FrameAssessment = ReturnType<typeof assessProjectFrames>[number];
+type ProjectSelection = ReturnType<typeof selectProjectFrame>;
+type PointerTrailFrame = { index: number; function: string; variables: string[] };
+type PointerOccurrence = { index: number; function: string; variable: string };
+type PointerTrail = { value: string; frames: PointerTrailFrame[]; confidence: string };
+
 import { diagnosticPathWithinRoot, normalizeDiagnosticPath } from './path-normalization.js';
 const RUNTIME_MODULE_RE = /^(?:ntdll|kernel32|kernelbase|ucrtbase|vcruntime\d*|msvcp\d*|libc(?:\+\+)?|libstdc\+\+|libgcc_s|libpthread|libm|ld-linux|libsystem_[^/\\]*|dyld|objc|corefoundation)(?:\.[^/\\]+)?$/i;
 const RUNTIME_PATH_RE = /(?:^|[/\\])(?:windows[/\\]system32|usr[/\\]lib|lib[/\\](?:x86_64-linux-gnu|aarch64-linux-gnu)|system[/\\]library)(?:[/\\]|$)/i;
@@ -12,29 +33,29 @@ const POISON_PATTERNS = [
     '0xdeadbeef',
     '0xbaadf00d',
 ];
-function portableBasename(value) {
+function portableBasename(value: string): string {
     return value.replace(/\\/g, '/').split('/').filter(Boolean).pop() ?? value;
 }
-function portableDirname(value) {
+function portableDirname(value: string): string | undefined {
     const result = /^[a-z]:[\\/]/i.test(value) ? path.win32.dirname(value) : path.dirname(value);
     return result === '.' ? undefined : result;
 }
-function sourcePath(frame) {
+function sourcePath(frame: DebugProtocol.StackFrame): string | undefined {
     return frame.source?.path ?? frame.source?.name;
 }
-function moduleBasename(frame) {
+function moduleBasename(frame: DebugProtocol.StackFrame): string {
     return portableBasename(String(frame.moduleId ?? '')).toLowerCase();
 }
-function confidenceFromScore(score) {
+function confidenceFromScore(score: number): 'high' | 'medium' | 'low' {
     if (score >= 80)
         return 'high';
     if (score >= 30)
         return 'medium';
     return 'low';
 }
-function projectHints(options) {
-    const roots = new Set();
-    const addRoot = (value) => {
+function projectHints(options: ProjectHints) {
+    const roots = new Set<string>();
+    const addRoot = (value: string | undefined) => {
         const normalized = normalizeDiagnosticPath(value);
         if (normalized)
             roots.add(normalized);
@@ -44,12 +65,12 @@ function projectHints(options) {
     addRoot(options.cwd);
     if (options.program)
         addRoot(portableDirname(options.program));
-    const modules = new Set((options.projectModules ?? []).map((value) => portableBasename(value).toLowerCase()));
+    const modules = new Set<string>((options.projectModules ?? []).map((value) => portableBasename(value).toLowerCase()));
     if (options.program)
         modules.add(portableBasename(options.program).toLowerCase());
     return { roots, modules };
 }
-export function assessProjectFrames(stack, options = {}) {
+export function assessProjectFrames(stack: DebugProtocol.StackFrame[], options: ProjectHints = {}) {
     const hints = projectHints(options);
     return stack.map((frame, index) => {
         const reasons = [];
@@ -97,7 +118,7 @@ export function assessProjectFrames(stack, options = {}) {
         };
     });
 }
-export function selectProjectFrame(stack, options = {}) {
+export function selectProjectFrame(stack: DebugProtocol.StackFrame[], options: ProjectHints = {}) {
     if (stack.length === 0)
         throw new Error('Cannot select a project frame from an empty stack.');
     const assessments = assessProjectFrames(stack, options);
@@ -114,7 +135,7 @@ export function selectProjectFrame(stack, options = {}) {
         usedExplicitProjectHint: hints.roots.size > 0 || hints.modules.size > 0,
     };
 }
-function parseAddress(value) {
+function parseAddress(value: string | undefined): bigint | undefined {
     if (!value)
         return undefined;
     const normalized = value.trim().replace(/[`'_\s]/g, '');
@@ -130,7 +151,7 @@ function parseAddress(value) {
     }
     return undefined;
 }
-function suspiciousKind(value) {
+function suspiciousKind(value: string | undefined): string | undefined {
     if (!value)
         return undefined;
     const compact = value.trim().toLowerCase().replace(/[`'_\s]/g, '');
@@ -140,14 +161,14 @@ function suspiciousKind(value) {
         return 'poison-pattern';
     return undefined;
 }
-function looksPointerLike(variable) {
+function looksPointerLike(variable: DebugProtocol.Variable): boolean {
     return /\*|pointer|ptr\b|address|handle|\bthis\b|\bself\b|object|reference/i.test(`${variable.name} ${variable.type ?? ''}`);
 }
 const X86_REGISTER_RE = /\b(?:r(?:ax|bx|cx|dx|si|di|sp|bp|ip|8|9|1[0-5])|r(?:8|9|1[0-5])(?:d|w|b)|e(?:ax|bx|cx|dx|si|di|sp|bp|ip)|(?:ax|bx|cx|dx|si|di|sp|bp|ip)|[abcd][lh]|[sd]il|[sb]pl)\b/gi;
 const ARM_REGISTER_RE = /\b(?:[xw](?:[0-9]|[12][0-9]|30)|sp|pc|lr)\b/gi;
-function canonicalX86Register(value) {
+function canonicalX86Register(value: string): string {
     const name = value.toLowerCase();
-    const aliases = {
+    const aliases: Record<string, string> = {
         eax: 'rax', ax: 'rax', al: 'rax', ah: 'rax',
         ebx: 'rbx', bx: 'rbx', bl: 'rbx', bh: 'rbx',
         ecx: 'rcx', cx: 'rcx', cl: 'rcx', ch: 'rcx',
@@ -162,14 +183,14 @@ function canonicalX86Register(value) {
         return aliases[name];
     return /^(r(?:8|9|1[0-5]))(?:d|w|b)$/.exec(name)?.[1] ?? name;
 }
-function canonicalArmRegister(value) {
+function canonicalArmRegister(value: string): string {
     const name = value.toLowerCase();
     if (name === 'lr')
         return 'x30';
     const match = /^w(\d+)$/.exec(name)?.[1];
     return match ? `x${match}` : name;
 }
-function currentInstruction(evidence) {
+function currentInstruction(evidence: FrameEvidence): DebugProtocol.DisassembledInstruction | undefined {
     const instructions = evidence.disassembly ?? [];
     const ip = evidence.frame.instructionPointerReference;
     if (!ip)
@@ -180,8 +201,8 @@ function currentInstruction(evidence) {
     const target = parseAddress(ip);
     if (target === undefined)
         return instructions[0];
-    let nearest;
-    let distance;
+    let nearest: DebugProtocol.DisassembledInstruction | undefined;
+    let distance: bigint | undefined;
     for (const instruction of instructions) {
         const address = parseAddress(instruction.address);
         if (address === undefined)
@@ -194,10 +215,10 @@ function currentInstruction(evidence) {
     }
     return nearest;
 }
-function memoryRegisterRoles(rawInstruction, memoryText, armLike, attMemorySyntax, canonicalize) {
+function memoryRegisterRoles(rawInstruction: string, memoryText: string, armLike: boolean, attMemorySyntax: boolean, canonicalize: (value: string) => string) {
     const regex = armLike ? ARM_REGISTER_RE : X86_REGISTER_RE;
     const matches = [...memoryText.matchAll(regex)];
-    const roles = new Map();
+    const roles = new Map<string, string>();
     if (matches.length === 0)
         return roles;
     if (armLike) {
@@ -232,7 +253,7 @@ function memoryRegisterRoles(rawInstruction, memoryText, armLike, attMemorySynta
     }
     return roles;
 }
-export function analyzeInstructionOperands(evidence) {
+export function analyzeInstructionOperands(evidence: FrameEvidence) {
     const instruction = currentInstruction(evidence);
     const rawInstruction = instruction?.instruction;
     if (!rawInstruction)
@@ -246,7 +267,7 @@ export function analyzeInstructionOperands(evidence) {
     const referenced = [...new Set([...rawInstruction.matchAll(registerRegex)].map((match) => canonicalize(match[0])))];
     const roles = memoryRegisterRoles(rawInstruction, memoryText, armLike, memoryMatch?.[2] !== undefined, canonicalize);
     const memoryRegisters = new Set(roles.keys());
-    const values = new Map();
+    const values = new Map<string, DebugProtocol.Variable>();
     for (const register of evidence.registers)
         values.set(canonicalize(register.name), register);
     const bindings = referenced.map((register) => {
@@ -262,7 +283,7 @@ export function analyzeInstructionOperands(evidence) {
             ...(suspicious ? { suspicious } : {}),
         };
     });
-    const variableBindings = [];
+    const variableBindings: Array<{ variable: string; variableType?: string; variableValue: string; register: string; registerValue: string; confidence: string; reason: string }> = [];
     for (const local of evidence.locals) {
         const localValue = parseAddress(local.value);
         if (localValue === undefined)
@@ -318,7 +339,7 @@ export function analyzeInstructionOperands(evidence) {
             : {}),
     };
 }
-function compactFrame(assessment, role) {
+function compactFrame(assessment: FrameAssessment, role: string) {
     const source = sourcePath(assessment.frame);
     return {
         index: assessment.index,
@@ -332,12 +353,12 @@ function compactFrame(assessment, role) {
         score: assessment.score,
     };
 }
-function comparableValue(value) {
+function comparableValue(value: string): string | undefined {
     const parsed = parseAddress(value);
     return parsed === undefined ? undefined : `0x${parsed.toString(16)}`;
 }
-function buildProvenance(evidence) {
-    const values = new Map();
+function buildProvenance(evidence: FrameEvidence[]): PointerTrail[] {
+    const values = new Map<string, PointerOccurrence[]>();
     for (const frame of evidence) {
         for (const variable of frame.locals) {
             if (!looksPointerLike(variable))
@@ -350,11 +371,11 @@ function buildProvenance(evidence) {
             values.set(value, occurrences);
         }
     }
-    const output = [];
+    const output: PointerTrail[] = [];
     for (const [value, occurrences] of values) {
         if (new Set(occurrences.map((item) => item.index)).size < 2)
             continue;
-        const frames = new Map();
+        const frames = new Map<number, PointerTrailFrame>();
         for (const occurrence of occurrences) {
             const item = frames.get(occurrence.index) ?? {
                 index: occurrence.index,
@@ -374,7 +395,7 @@ function buildProvenance(evidence) {
     }
     return output.slice(0, 8);
 }
-export function analyzeCallChain(selection, evidence) {
+export function analyzeCallChain(selection: ProjectSelection, evidence: FrameEvidence[]) {
     const selectedIndex = selection.selected.index;
     const frames = selection.assessments.map((assessment) => {
         let role = 'other';
@@ -388,7 +409,7 @@ export function analyzeCallChain(selection, evidence) {
             role = 'runtime-boundary';
         return compactFrame(assessment, role);
     });
-    const counts = new Map();
+    const counts = new Map<string, number>();
     for (const assessment of selection.assessments) {
         counts.set(assessment.frame.name, (counts.get(assessment.frame.name) ?? 0) + 1);
     }
