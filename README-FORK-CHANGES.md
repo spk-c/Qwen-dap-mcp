@@ -35,3 +35,7 @@ Legacy .d.ts declarations and .js.map source maps originate from the compiled up
 - Migrated all 51 modern runtime modules to authoritative .ts files compiled with tsc; generated JS mirrors preserve Node ESM/test compatibility.
 - Regenerated declarations from TypeScript, enabled static checking for 37 modules, and documented 14 temporary @ts-nocheck cases (not yet fully strict).
 - Retained the existing unit/native debugger/postmortem/remote/CodeQL CI gates and exact JS synchronization checks.
+
+## 2026-11-02 npm publishing restoration
+
+The original project namespace `@slp-dev1/qwen-dap-mcp` was explicitly reconnected by the package maintainer to the `spk-c/Qwen-dap-mcp` repository through npm Trusted Publishing. The fork's former private package name and `private: true` setting were removed; the npm README is refreshed in patch release 0.19.1. The earlier statements above describe the historical fork-protection state, not the current release configuration. Original authorship remains credited in NOTICE and README.
