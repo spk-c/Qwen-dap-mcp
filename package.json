@@ -1,5 +1,5 @@
 {
-  "name": "qwen-dap-mcp-spk-c",
+  "name": "@slp-dev1/qwen-dap-mcp",
   "version": "0.19.0",
   "description": "Agentic native debugging via DAP→MCP: crashes, hangs, dumps, causal/lifetime tracing, symbols, record/replay, crash families, and evidence-driven verification.",
   "type": "module",
@@ -84,7 +84,7 @@
     "@vscode/debugprotocol": "^1.68.0",
     "zod": "^4.5.4"
   },
-  "private": true,
+  "private": false,
   "devDependencies": {
     "typescript": "^5.9.3",
     "@types/node": "^22.18.0"
