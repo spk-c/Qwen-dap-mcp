@@ -30,3 +30,11 @@ Running any external debugger binary is still privileged: use trusted adapters a
 Remote debugging is loopback-only by default, with QWEN_DAP_MCP_REMOTE_DEBUG_HOSTS for explicitly trusted remote hosts.
 
 The maintained fork is configured to publish the `@slp-dev1/qwen-dap-mcp` npm package using OIDC Trusted Publishing. Only published npm versions include released fork changes; unreleased changes remain on GitHub. See [publishing](publishing.md).
+
+## Guided setup and debugging
+
+- [Debug a native C/C++ crash with Qwen Code](tutorial-cpp-crash-debugging.md)
+- [Analyze a Windows minidump with CodeLLDB](tutorial-windows-minidump.md)
+- [Set up GDB/LLDB DAP debugging for MCP](tutorial-gdb-lldb-mcp.md)
+
+These examples describe intended debugger workflows for trusted, owned test programs. Refer to the platform-specific setup guides for exact adapter support and limitations.

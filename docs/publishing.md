@@ -24,3 +24,16 @@ If npm was published successfully but GitHub release creation failed, rerunning 
 - Run native adapter integration tests only on owned fixtures.
 
 Historical [v0.19.0](https://github.com/spk-c/Qwen-dap-mcp/releases/tag/v0.19.0) was published as a GitHub release before npm was reconnected; [v0.19.1](https://github.com/spk-c/Qwen-dap-mcp/releases/tag/v0.19.1) was successfully published to both registries.
+
+## Official MCP Registry
+
+For new versions the repository declares `io.github.spk-c/qwen-dap-mcp` in **both** `server.json` and the npm package's `package.json#mcpName`. The release workflow checks the exact version and npm package identity, publishes the npm artifact via OIDC first, and then authenticates to the [official MCP Registry](https://registry.modelcontextprotocol.io/) with GitHub Actions OIDC.
+
+The official registry must validate npm package ownership using the `mcpName` field in the **published** npm package. A commit on GitHub alone is insufficient, and historical `io.github.SLP-DEV1/*` entries are not under this repository's namespace.
+
+After releasing, verify the exact version from:
+- [npm package versions](https://www.npmjs.com/package/@slp-dev1/qwen-dap-mcp?activeTab=versions)
+- [Official MCP Registry lookup](https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.spk-c%2Fqwen-dap-mcp)
+- [GitHub Releases](https://github.com/spk-c/Qwen-dap-mcp/releases)
+
+If MCP Registry publishing fails, do **not** forge a successful listing. The workflow deliberately leaves the GitHub release unfinished so that it can retry the identical npm tarball and complete the registry step. Always check both registries after publishing.

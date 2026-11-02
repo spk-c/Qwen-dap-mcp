@@ -1,0 +1,22 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.spk-c/qwen-dap-mcp",
+  "title": "Qwen DAP MCP — Native Debugger for AI Coding Agents",
+  "description": "Local MCP server for native C/C++ crash, hang, deadlock, core dump and Windows minidump debugging through DAP, GDB, LLDB and CodeLLDB.",
+  "repository": {
+    "url": "https://github.com/spk-c/Qwen-dap-mcp",
+    "source": "github"
+  },
+  "version": "0.19.2",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "@slp-dev1/qwen-dap-mcp",
+      "version": "0.19.2",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}

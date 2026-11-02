@@ -42,6 +42,7 @@ try{
     assert.equal(qwen.version,manifest.version);
     assert.equal(manifest.private,false);
     assert.equal(manifest.name,'@slp-dev1/qwen-dap-mcp');
+    assert.equal(manifest.mcpName,'io.github.spk-c/qwen-dap-mcp','Published package must prove MCP Registry ownership');
     assert.equal(qwen.mcpServers['qwen-dap-mcp'].command,'node');
     assert.ok(qwen.mcpServers['qwen-dap-mcp'].args[0].includes('dist'));
     const version=execFileSync(process.execPath,[join(pkg,'dist','index.js'),'--version'],{
