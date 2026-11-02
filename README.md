@@ -224,6 +224,7 @@ Start with the [documentation index](https://github.com/spk-c/Qwen-dap-mcp/blob/
 
 | Topic | Guide |
 | --- | --- |
+| macOS experimental support | [docs/macos.md](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/macos.md) |
 | CodeLLDB on Windows | [docs/CODELLDB_WINDOWS.md](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/CODELLDB_WINDOWS.md) |
 | LLVM `lldb-dap` | [docs/lldb-dap.md](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/lldb-dap.md) |
 | GNU GDB DAP | [docs/gdb-dap.md](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/gdb-dap.md) |
@@ -255,7 +256,7 @@ See [CONTRIBUTING.md](https://github.com/spk-c/Qwen-dap-mcp/blob/main/CONTRIBUTI
 - **npm:** [`@slp-dev1/qwen-dap-mcp`](https://www.npmjs.com/package/@slp-dev1/qwen-dap-mcp) — installable published versions; verify the npm version before assuming a GitHub change is included.
 - **Maintained source and Qwen extension:** [`spk-c/Qwen-dap-mcp`](https://github.com/spk-c/Qwen-dap-mcp) — `qwen extensions install spk-c/Qwen-dap-mcp`.
 - **Release archives and changelog:** [GitHub Releases](https://github.com/spk-c/Qwen-dap-mcp/releases) and [CHANGELOG.md](https://github.com/spk-c/Qwen-dap-mcp/blob/main/CHANGELOG.md).
-- **Publishing:** Releases are manually triggered after required CI passes; npm Trusted Publishing uses GitHub Actions OIDC, without a long-lived npm publication token.
+- **Publishing:** Releases are triggered by an intentional `vX.Y.Z` tag on a verified `main` commit or by manual workflow dispatch; npm Trusted Publishing uses GitHub Actions OIDC without a long-lived npm publication token.
 
 The npm listing is updated from the README **inside the published tarball**. The GitHub README and npm README can temporarily differ until the next release.
 

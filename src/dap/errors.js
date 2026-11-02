@@ -20,4 +20,3 @@ export class DapTimeoutError extends DapError {
         this.name = 'DapTimeoutError';
     }
 }
-//# sourceMappingURL=errors.js.map

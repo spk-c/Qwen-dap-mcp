@@ -34,7 +34,11 @@ try{
     const pkg=join(tmp,'package');
     const manifest=JSON.parse(readFileSync(join(pkg,'package.json'),'utf8'));
     const qwen=JSON.parse(readFileSync(join(pkg,'qwen-extension.json'),'utf8'));
-    assert.equal(manifest.version,'0.19.1');
+    for (const file of files) if (file.endsWith('.js')) {
+        assert.ok(!readFileSync(join(pkg,file),'utf8').includes('sourceMappingURL='),'Stale source map reference in package: '+file);
+    }
+    assert.match(manifest.version,/^[0-9]+[.][0-9]+[.][0-9]+(?:-[0-9A-Za-z.-]+)?$/);
+    assert.equal(manifest.version,JSON.parse(readFileSync(join(root,'package.json'),'utf8')).version);
     assert.equal(qwen.version,manifest.version);
     assert.equal(manifest.private,false);
     assert.equal(manifest.name,'@slp-dev1/qwen-dap-mcp');

@@ -1,6 +1,6 @@
 # Qwen DAP MCP documentation
 
-This fork now uses **src/**/*.ts as the authoritative runtime sources** (51 modules). The generated src/**/*.js mirrors preserve existing Node ESM imports, while dist/ contains the compiled runtime and generated declarations. The recovered v0.12.0 source snapshot provides original TypeScript references for 21 modules; the later v0.18.2 npm release did not contain its original .ts files. See [migration status](typescript-migration.md) for temporary typing exclusions.
+This fork now uses **src/**/*.ts as the authoritative runtime sources** (51 modules). The generated src/**/*.js mirrors preserve existing Node ESM imports, while dist/ contains the compiled runtime and generated declarations. The recovered v0.12.0 source snapshot provides original TypeScript references for 21 modules; the later v0.18.2 npm release did not contain its original .ts files. See [migration status](typescript-migration.md) for the completed strict TypeScript migration.
 
 ## Development
 

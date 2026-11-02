@@ -22,4 +22,3 @@ export const SESSION_TEARDOWN_ANNOTATIONS = {
     idempotentHint: false,
     openWorldHint: false,
 };
-//# sourceMappingURL=tool-annotations.js.map

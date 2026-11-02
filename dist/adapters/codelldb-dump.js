@@ -36,4 +36,3 @@ export function buildCodeLldbDumpConfiguration(options) {
         ...(options.sourceMap ? { sourceMap: options.sourceMap } : {}),
     };
 }
-//# sourceMappingURL=codelldb-dump.js.map

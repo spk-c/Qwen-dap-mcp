@@ -610,4 +610,3 @@ export async function requireHolGuardAdapterStart(evaluator, options) {
     }
     return context;
 }
-//# sourceMappingURL=hol-guard-policy.js.map

@@ -51,4 +51,3 @@ export function registerSessionTools(server: McpServer, registry: DapSessionRegi
         }
     });
 }
-//# sourceMappingURL=register-session-tools.js.map

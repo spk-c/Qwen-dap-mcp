@@ -183,4 +183,3 @@ export function buildLldbDapCoreConfiguration(options: LldbDapCoreOptions) {
         ...(options.sourceMap ? { sourceMap: Object.entries(options.sourceMap) } : {}),
     };
 }
-//# sourceMappingURL=lldb-dap.js.map

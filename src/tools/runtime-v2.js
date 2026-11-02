@@ -627,4 +627,3 @@ export function registerRuntimeV2Tools(server, session) {
         return structuredResult(result);
     });
 }
-//# sourceMappingURL=runtime-v2.js.map

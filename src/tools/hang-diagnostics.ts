@@ -710,4 +710,3 @@ export function registerHangDiagnosticTool(server: McpServer, session: GuardedDa
         }
     });
 }
-//# sourceMappingURL=hang-diagnostics.js.map

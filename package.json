@@ -28,7 +28,9 @@
     "check:docs": "node scripts/check-docs.mjs",
     "check:pack": "node scripts/check-package-tarball.mjs",
     "check:types": "node scripts/check-type-coverage.mjs",
-    "check:strict-budget": "node scripts/check-strict-budget.mjs"
+    "check:strict-budget": "node scripts/check-strict-budget.mjs",
+    "test:coverage": "node --experimental-test-coverage --test --test-coverage-lines=30 --test-coverage-functions=30 --test-coverage-branches=65",
+    "bench:transport": "node benchmark/dap-transport.mjs"
   },
   "engines": {
     "node": ">=20"

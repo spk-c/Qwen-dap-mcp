@@ -1,11 +1,13 @@
 name: Publish verified npm and GitHub release
 on:
+  push:
+    tags: ['v*']
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version (this workflow is scoped to 0.19.1)'
-        required: true
-        default: '0.19.1'
+        description: 'Optional version; must match package.json'
+        required: false
+        default: ''
         type: string
 permissions:
   contents: write
@@ -27,19 +29,35 @@ jobs:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false
-      - name: Validate release is explicitly triggered from main
+      - name: Validate release version, ancestry and existing GitHub tag
         env:
-          VERSION: ${{ inputs.version }}
+          REQUESTED_VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          test "$GITHUB_REF" = "refs/heads/main" || { echo 'Run this workflow from main only.'; exit 1; }
-          test "$VERSION" = "0.19.1" || { echo 'This release workflow is restricted to 0.19.1.'; exit 1; }
-          node -e "const p=require('./package.json');const q=require('./qwen-extension.json');if(p.version!=='0.19.1'||q.version!==p.version||p.private!==false||p.name!=='@slp-dev1/qwen-dap-mcp')process.exit(1)"
+          set -euo pipefail
+          git fetch origin main --tags
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo 'Release commit must be reachable from main.'; exit 1; }
+          node -e "const p=require('./package.json'),q=require('./qwen-extension.json'),l=require('./package-lock.json');if(p.version!==q.version||p.version!==l.version||p.version!==l.packages[''].version||p.private!==false||p.name!=='@slp-dev1/qwen-dap-mcp'||!(/^[0-9]+[.][0-9]+[.][0-9]+(?:-[0-9A-Za-z.-]+)?$/).test(p.version))process.exit(1)"
+          VERSION=$(node -p 'require("./package.json").version')
+          test -z "$REQUESTED_VERSION" || test "$REQUESTED_VERSION" = "$VERSION" || { echo 'Requested version differs from package.json.'; exit 1; }
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            test "$GITHUB_REF_NAME" = "v$VERSION" || { echo 'Tag must match package version.'; exit 1; }
+          else
+            test "$GITHUB_REF" = refs/heads/main || { echo 'Manual releases must run from main.'; exit 1; }
+          fi
+          echo "RELEASE_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=v$VERSION" >> "$GITHUB_ENV"
+          if gh release view "v$VERSION" >/dev/null 2>&1; then echo "Release v$VERSION already exists; refusing to overwrite."; exit 1; fi
+          if git rev-parse --verify "refs/tags/v$VERSION" >/dev/null 2>&1; then
+            test "$(git rev-list -n 1 "v$VERSION")" = "$GITHUB_SHA" || { echo 'Tag points to another commit.'; exit 1; }
+          fi
       - name: Require successful CI, native debuggers, postmortem, remote and CodeQL
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
+          set -euo pipefail
           gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$GITHUB_SHA&per_page=100" > /tmp/qwen-dap-ci.json
           for workflow in \
             "CI" "Native debugger end-to-end" "Native postmortem E2E" \
@@ -63,36 +81,32 @@ jobs:
           sha256sum ./*.tgz > SHA256SUMS
       - name: Install npm with OIDC trusted publishing support
         run: npm install --global npm@^11
-      - name: Publish verified package to npm via OIDC
+      - name: Publish verified tarball or safely resume a partial release
         shell: bash
         run: |
-          test "$(node -p 'require("./package.json").name')" = '@slp-dev1/qwen-dap-mcp'
-          test "$(node -p 'require("./package.json").version')" = '0.19.1'
-          if npm view '@slp-dev1/qwen-dap-mcp@0.19.1' version >/dev/null 2>&1; then
-            echo 'npm version 0.19.1 already exists; refusing to overwrite.'
-            exit 1
+          set -euo pipefail
+          archive=$(find release-assets -maxdepth 1 -type f -name '*.tgz' -print -quit)
+          test -n "$archive"
+          existing=$(npm view "@slp-dev1/qwen-dap-mcp@$RELEASE_VERSION" dist.integrity 2>/dev/null || true)
+          if [ -n "$existing" ]; then
+            local_integrity="sha512-$(openssl dgst -sha512 -binary "$archive" | openssl base64 -A)"
+            test "$existing" = "$local_integrity" || { echo 'Existing npm tarball differs; refusing overwrite.'; exit 1; }
+            echo 'Verified identical npm tarball; continuing with GitHub release recovery.'
+          else
+            npm publish "$archive" --access public --provenance --ignore-scripts
           fi
-          npm publish --access public --ignore-scripts
-      - name: Tag vetted commit and publish GitHub release
+      - name: Tag vetted commit and create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          tag=v0.19.1
-          if gh release view "$tag" >/dev/null 2>&1; then
-            echo "Release $tag already exists; refusing to overwrite."
-            exit 1
-          fi
-          git fetch origin --tags
-          if git rev-parse --verify "refs/tags/$tag" >/dev/null 2>&1; then
-            actual=$(git rev-list -n 1 "$tag")
-            test "$actual" = "$GITHUB_SHA" || { echo "Tag $tag points at another commit."; exit 1; }
-          else
+          set -euo pipefail
+          if ! git rev-parse --verify "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git tag -a "$tag" "$GITHUB_SHA" -m "Qwen DAP MCP 0.19.1"
-            git push origin "refs/tags/$tag"
+            git tag -a "$RELEASE_TAG" "$GITHUB_SHA" -m "Qwen DAP MCP $RELEASE_VERSION"
+            git push origin "refs/tags/$RELEASE_TAG"
           fi
-          gh release create "$tag" release-assets/*.tgz release-assets/SHA256SUMS \
-            --verify-tag --title "Qwen DAP MCP 0.19.1" \
-            --notes-file RELEASE-0.19.1.md --latest
+          gh release create "$RELEASE_TAG" release-assets/*.tgz release-assets/SHA256SUMS \
+            --verify-tag --title "Qwen DAP MCP $RELEASE_VERSION" \
+            --generate-notes --latest

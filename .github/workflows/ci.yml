@@ -12,7 +12,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        node: [22, 24]
+        node: [20, 22, 24]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -23,3 +23,17 @@ jobs:
       - run: npm run check:pack
       - name: Verify committed build is synchronized
         run: git diff --exit-code -- dist src
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run build
+      - name: Collect built-in Node.js test coverage
+        run: npm run test:coverage
+      - name: Enforce covered transport and security tests
+        run: node --test test/transport-regression.test.mjs test/security.test.mjs test/logger-security.test.mjs

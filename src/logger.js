@@ -12,7 +12,18 @@ function normalizeLogLevel(value) {
     }
     return 'info';
 }
+function redactLogText(value) {
+    return value
+        .replace(/\b(Bearer\s+)[^\s"',;]+/gi, '$1[REDACTED]')
+        .replace(/\b((?:password|passwd|token|access[_-]?token|refresh[_-]?token|api[_-]?key|client[_-]?secret|authorization|cookie)\s*[:=]\s*)[^\s"',;]+/gi, '$1[REDACTED]');
+}
+function isSensitiveLogKey(key) {
+    const compact = key.replace(/[^a-z0-9]/gi, '').toLowerCase();
+    return ['password', 'passwd', 'secret', 'token', 'apikey', 'authorization', 'credential', 'cookie', 'privatekey'].some((word) => compact.includes(word));
+}
 function normalizeLogValue(value, ancestors) {
+    if (typeof value === 'string')
+        return redactLogText(value);
     if (typeof value === 'bigint') {
         return value.toString();
     }
@@ -27,8 +38,8 @@ function normalizeLogValue(value, ancestors) {
         if (value instanceof Error) {
             return {
                 name: value.name,
-                message: value.message,
-                ...(value.stack ? { stack: value.stack } : {}),
+                message: redactLogText(value.message),
+                ...(value.stack ? { stack: redactLogText(value.stack) } : {}),
                 ...('cause' in value && value.cause !== undefined
                     ? { cause: normalizeLogValue(value.cause, ancestors) }
                     : {}),
@@ -42,7 +53,7 @@ function normalizeLogValue(value, ancestors) {
         }
         const normalized = {};
         for (const [key, child] of Object.entries(value)) {
-            normalized[key] = normalizeLogValue(child, ancestors);
+            normalized[key] = isSensitiveLogKey(key) ? '[REDACTED]' : normalizeLogValue(child, ancestors);
         }
         return normalized;
     }
@@ -76,4 +87,3 @@ export function createLogger(options = {}) {
     };
 }
 export const logger = createLogger();
-//# sourceMappingURL=logger.js.map

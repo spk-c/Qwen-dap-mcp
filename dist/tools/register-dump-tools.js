@@ -139,4 +139,3 @@ export function registerDumpTools(server, session) {
         }),
     }, wrap(async (options) => openDump(session, options)));
 }
-//# sourceMappingURL=register-dump-tools.js.map
