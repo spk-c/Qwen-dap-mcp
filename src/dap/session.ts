@@ -2,6 +2,18 @@ import { DapConnection } from './connection.js';
 import type { DebugProtocol } from '@vscode/debugprotocol';
 import { DapError, DapRequestError, DapTimeoutError } from './errors.js';
 import { assessSymbolHealth } from './symbol-health.js';
+type DapSessionStartOptions = {
+    command: string;
+    adapterId: string;
+    args?: string[];
+    cwd?: string;
+    env?: NodeJS.ProcessEnv;
+    requestTimeoutMs?: number;
+};
+type BreakpointGroup = { source: string; lines: number[] };
+type ThreadStopEvent = DebugProtocol.StoppedEvent;
+type DapRecentEvent = { event: string; body?: DebugProtocol.StoppedEvent['body'] };
+
 export type RuntimeSnapshotOptions = {
     threadId?: number;
     stackLevels?: number;
@@ -16,17 +28,17 @@ export type RuntimeSnapshotOptions = {
 const MAX_READ_MEMORY_BYTES = 1024 * 1024;
 const MAX_DISASSEMBLY_INSTRUCTIONS = 10_000;
 const MAX_RELATIVE_DAP_OFFSET = 2_147_483_647;
-function assertSafeIntegerInRange(name, value, min, max) {
+function assertSafeIntegerInRange(name: string, value: number, min: number, max: number): void {
     if (!Number.isSafeInteger(value) || value < min || value > max) {
         throw new DapError(`${name} must be a safe integer between ${min} and ${max}; received ${String(value)}`);
     }
 }
-function errorMessage(error) {
+function errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
 }
-function dedupeVariables(variables) {
-    const seen = new Set();
-    const output = [];
+function dedupeVariables(variables: DebugProtocol.Variable[]): DebugProtocol.Variable[] {
+    const seen = new Set<string>();
+    const output: DebugProtocol.Variable[] = [];
     for (const variable of variables) {
         const key = [
             variable.name,
@@ -43,7 +55,7 @@ function dedupeVariables(variables) {
     }
     return output;
 }
-function latestActiveStoppedBody(records) {
+function latestActiveStoppedBody(records: DapRecentEvent[]): DebugProtocol.StoppedEvent['body'] | undefined {
     for (const record of [...records].reverse()) {
         const candidate = record;
         if (candidate.event === 'continued' || candidate.event === 'exited' || candidate.event === 'terminated') {
@@ -60,12 +72,12 @@ export class DapSession {
     initialized = false;
     configured = false;
     stateUncertain = false;
-    activeRequest;
-    adapterId;
-    capabilities;
-    dataBreakpoints = [];
+    activeRequest?: 'launch' | 'attach';
+    adapterId?: string;
+    capabilities?: DebugProtocol.Capabilities;
+    dataBreakpoints: DebugProtocol.DataBreakpoint[] = [];
     requestTimeoutMs = 15_000;
-    async start(options) {
+    async start(options: DapSessionStartOptions) {
         await this.reset();
         this.requestTimeoutMs = options.requestTimeoutMs ?? 15_000;
         await this.connection.start({
@@ -102,33 +114,33 @@ export class DapSession {
             throw error;
         }
     }
-    async launch(configuration, breakpoints = []) {
+    async launch(configuration: Record<string, unknown>, breakpoints: BreakpointGroup[] = []) {
         return this.beginDebugRequest('launch', configuration, breakpoints);
     }
-    async attach(configuration, breakpoints = []) {
+    async attach(configuration: Record<string, unknown>, breakpoints: BreakpointGroup[] = []) {
         return this.beginDebugRequest('attach', configuration, breakpoints);
     }
-    async setBreakpoints(source, lines) {
+    async setBreakpoints(source: string, lines: number[]) {
         return this.setSourceBreakpoints(source, lines.map((line) => ({ line })));
     }
-    async setSourceBreakpoints(source, breakpoints) {
+    async setSourceBreakpoints(source: string, breakpoints: DebugProtocol.SourceBreakpoint[]) {
         this.assertInitialized();
         const response = await this.sendStateChangingRequest('setBreakpoints', { source: { path: source }, breakpoints, sourceModified: false });
         return (response.body?.breakpoints ?? []);
     }
-    async setFunctionBreakpoints(breakpoints) {
+    async setFunctionBreakpoints(breakpoints: DebugProtocol.FunctionBreakpoint[]) {
         this.assertInitialized();
         this.assertCapability('supportsFunctionBreakpoints', 'setFunctionBreakpoints');
         const response = await this.sendStateChangingRequest('setFunctionBreakpoints', { breakpoints });
         return (response.body?.breakpoints ?? []);
     }
-    async setInstructionBreakpoints(breakpoints) {
+    async setInstructionBreakpoints(breakpoints: DebugProtocol.InstructionBreakpoint[]) {
         this.assertInitialized();
         this.assertCapability('supportsInstructionBreakpoints', 'setInstructionBreakpoints');
         const response = await this.sendStateChangingRequest('setInstructionBreakpoints', { breakpoints });
         return (response.body?.breakpoints ?? []);
     }
-    async dataBreakpointInfo(name, variablesReference, frameId) {
+    async dataBreakpointInfo(name: string, variablesReference?: number, frameId?: number) {
         this.assertConfigured();
         this.assertCapability('supportsDataBreakpoints', 'dataBreakpointInfo');
         const args = {
@@ -139,7 +151,7 @@ export class DapSession {
         const response = await this.connection.sendRequest('dataBreakpointInfo', args, this.requestTimeoutMs);
         return (response.body ?? { dataId: null, description: name, canPersist: false });
     }
-    async setDataBreakpoints(breakpoints) {
+    async setDataBreakpoints(breakpoints: DebugProtocol.DataBreakpoint[]) {
         this.assertConfigured();
         this.assertCapability('supportsDataBreakpoints', 'setDataBreakpoints');
         const response = await this.sendStateChangingRequest('setDataBreakpoints', { breakpoints });
@@ -149,7 +161,7 @@ export class DapSession {
     dataBreakpointConfiguration() {
         return this.dataBreakpoints.map((breakpoint) => ({ ...breakpoint }));
     }
-    async setExceptionBreakpoints(filters, filterOptions) {
+    async setExceptionBreakpoints(filters: string[], filterOptions?: DebugProtocol.ExceptionFilterOptions[]) {
         this.assertInitialized();
         const args = {
             filters,
@@ -158,7 +170,7 @@ export class DapSession {
         const response = await this.sendStateChangingRequest('setExceptionBreakpoints', args);
         return (response.body?.breakpoints ?? []);
     }
-    async pause(threadId, waitForStop = true, timeoutMs = 15_000) {
+    async pause(threadId: number, waitForStop = true, timeoutMs = 15_000) {
         this.assertConfigured();
         const stopped = waitForStop ? this.createThreadStopWait(threadId, timeoutMs) : undefined;
         if (stopped)
@@ -180,7 +192,7 @@ export class DapSession {
             stopped: event.body ?? {},
         };
     }
-    async continueExecution(threadId, waitForStop = true, timeoutMs = 15_000) {
+    async continueExecution(threadId: number, waitForStop = true, timeoutMs = 15_000) {
         this.assertConfigured();
         const stopped = waitForStop ? this.createThreadStopWait(threadId, timeoutMs) : undefined;
         if (stopped)
@@ -198,7 +210,7 @@ export class DapSession {
         const event = await stopped.promise;
         return { response: response.body ?? {}, stopped: event.body ?? {} };
     }
-    async step(action, threadId, waitForStop = true, timeoutMs = 15_000) {
+    async step(action: 'next' | 'stepIn' | 'stepOut', threadId: number, waitForStop = true, timeoutMs = 15_000) {
         this.assertConfigured();
         const stopped = waitForStop ? this.createThreadStopWait(threadId, timeoutMs) : undefined;
         if (stopped)
@@ -216,7 +228,7 @@ export class DapSession {
         const event = await stopped.promise;
         return { response: response.body ?? {}, stopped: event.body ?? {} };
     }
-    async reverseContinue(threadId, waitForStop = true, timeoutMs = 15_000) {
+    async reverseContinue(threadId: number, waitForStop = true, timeoutMs = 15_000) {
         this.assertConfigured();
         this.assertCapability('supportsStepBack', 'reverseContinue');
         const stopped = waitForStop ? this.createThreadStopWait(threadId, timeoutMs) : undefined;
@@ -235,7 +247,7 @@ export class DapSession {
         const event = await stopped.promise;
         return { response: response.body ?? {}, stopped: event.body ?? {} };
     }
-    async stepBack(threadId, waitForStop = true, timeoutMs = 15_000) {
+    async stepBack(threadId: number, waitForStop = true, timeoutMs = 15_000) {
         this.assertConfigured();
         this.assertCapability('supportsStepBack', 'stepBack');
         const stopped = waitForStop ? this.createThreadStopWait(threadId, timeoutMs) : undefined;
@@ -259,17 +271,17 @@ export class DapSession {
         const response = await this.connection.sendRequest('threads', {}, this.requestTimeoutMs);
         return (response.body?.threads ?? []);
     }
-    async stackTrace(threadId, startFrame = 0, levels = 20) {
+    async stackTrace(threadId: number, startFrame = 0, levels = 20) {
         this.assertConfigured();
         const response = await this.connection.sendRequest('stackTrace', { threadId, startFrame, levels }, this.requestTimeoutMs);
         return (response.body?.stackFrames ?? []);
     }
-    async scopes(frameId) {
+    async scopes(frameId: number) {
         this.assertConfigured();
         const response = await this.connection.sendRequest('scopes', { frameId }, this.requestTimeoutMs);
         return (response.body?.scopes ?? []);
     }
-    async variables(variablesReference, start, count) {
+    async variables(variablesReference: number, start?: number, count?: number) {
         this.assertConfigured();
         if (!Number.isSafeInteger(variablesReference) || variablesReference <= 0) {
             throw new DapError(`variablesReference must be a positive safe integer; received ${String(variablesReference)}`);
@@ -300,7 +312,7 @@ export class DapSession {
             return variables.slice(from, count === undefined ? undefined : from + count);
         }
     }
-    async evaluate(expression, frameId, context = 'watch') {
+    async evaluate(expression: string, frameId?: number, context: 'watch' | 'repl' | 'hover' | 'clipboard' | 'variables' = 'watch') {
         this.assertConfigured();
         const args = { expression, context, ...(frameId === undefined ? {} : { frameId }) };
         const response = await this.sendStateChangingRequest('evaluate', args);
@@ -312,7 +324,7 @@ export class DapSession {
         const response = await this.connection.sendRequest('modules', { startModule, moduleCount }, this.requestTimeoutMs);
         return (response.body?.modules ?? []);
     }
-    async disassemble(memoryReference, instructionCount = 20, instructionOffset = 0, offset = 0, resolveSymbols = true) {
+    async disassemble(memoryReference: string, instructionCount = 20, instructionOffset = 0, offset = 0, resolveSymbols = true) {
         this.assertConfigured();
         this.assertCapability('supportsDisassembleRequest', 'disassemble');
         assertSafeIntegerInRange('instructionCount', instructionCount, 1, MAX_DISASSEMBLY_INSTRUCTIONS);
@@ -321,7 +333,7 @@ export class DapSession {
         const response = await this.connection.sendRequest('disassemble', { memoryReference, instructionCount, instructionOffset, offset, resolveSymbols }, this.requestTimeoutMs);
         return (response.body?.instructions ?? []);
     }
-    async readMemory(memoryReference, count, offset = 0) {
+    async readMemory(memoryReference: string, count: number, offset = 0) {
         this.assertConfigured();
         this.assertCapability('supportsReadMemoryRequest', 'readMemory');
         assertSafeIntegerInRange('count', count, 1, MAX_READ_MEMORY_BYTES);
@@ -329,7 +341,7 @@ export class DapSession {
         const response = await this.connection.sendRequest('readMemory', { memoryReference, count, offset }, this.requestTimeoutMs);
         return (response.body ?? { address: memoryReference });
     }
-    async exceptionInfo(threadId) {
+    async exceptionInfo(threadId: number) {
         this.assertConfigured();
         this.assertCapability('supportsExceptionInfoRequest', 'exceptionInfo');
         const response = await this.connection.sendRequest('exceptionInfo', { threadId }, this.requestTimeoutMs);
@@ -456,7 +468,7 @@ export class DapSession {
         this.capabilities = undefined;
         this.dataBreakpoints = [];
     }
-    async beginDebugRequest(request, configuration, breakpoints) {
+    async beginDebugRequest(request: 'launch' | 'attach', configuration: Record<string, unknown>, breakpoints: BreakpointGroup[]) {
         this.assertInitialized();
         if (this.stateUncertain)
             throw new DapError('DAP session state is uncertain after a timed-out mutation. Reset the session before launch/attach.');
@@ -542,7 +554,7 @@ export class DapSession {
             initializedAbort.abort();
         }
     }
-    async sendStateChangingRequest(command, args, timeoutMs = this.requestTimeoutMs) {
+    async sendStateChangingRequest(command: string, args: Record<string, unknown>, timeoutMs = this.requestTimeoutMs) {
         try {
             return await this.connection.sendRequest(command, args, timeoutMs);
         }
@@ -552,17 +564,17 @@ export class DapSession {
             throw error;
         }
     }
-    createThreadStopWait(threadId, timeoutMs) {
+    createThreadStopWait(threadId: number, timeoutMs: number) {
         let active = true;
-        let timer;
-        let rejectPromise;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        let rejectPromise!: (reason?: unknown) => void;
         const cleanup = () => {
             clearTimeout(timer);
             this.connection.off('event:stopped', onStopped);
             this.connection.off('adapterExit', onAdapterExit);
             this.connection.off('adapterError', onAdapterError);
         };
-        const finish = (event: any, error?: Error) => {
+        const finish = (event: ThreadStopEvent | undefined, error?: Error) => {
             if (!active)
                 return;
             active = false;
@@ -570,17 +582,17 @@ export class DapSession {
             if (error)
                 rejectPromise(error);
             else
-                resolvePromise(event);
+                resolvePromise(event!);
         };
-        let resolvePromise;
-        const onStopped = (event) => {
+        let resolvePromise!: (value: DebugProtocol.Event) => void;
+        const onStopped = (event: ThreadStopEvent) => {
             const body = event.body;
             if (body?.allThreadsStopped !== true && body?.threadId !== undefined && body.threadId !== threadId)
                 return;
             finish(event);
         };
         const onAdapterExit = () => finish(undefined, new DapError("DAP adapter exited while waiting for event 'stopped'"));
-        const onAdapterError = (error) => finish(undefined, error instanceof Error ? error : new DapError("DAP adapter failed while waiting for event 'stopped'"));
+        const onAdapterError = (error: unknown) => finish(undefined, error instanceof Error ? error : new DapError("DAP adapter failed while waiting for event 'stopped'"));
         const promise = new Promise<DebugProtocol.Event>((resolve, reject) => {
             resolvePromise = resolve;
             rejectPromise = reject;
@@ -594,7 +606,7 @@ export class DapSession {
             cancel: () => finish(undefined, new DapError("DAP event 'stopped' wait cancelled because the associated request failed.")),
         };
     }
-    assertCapability(capability, requestName) {
+    assertCapability(capability: keyof DebugProtocol.Capabilities, requestName: string): void {
         if (!this.capabilities?.[capability])
             throw new DapError(`The active DAP adapter does not advertise ${String(capability)} required for ${requestName}.`);
     }
