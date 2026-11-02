@@ -23,7 +23,7 @@ If npm was published successfully but GitHub release creation failed, rerunning 
 - Keep debugger transport policies and the completed TypeScript `strict: true` gate intact.
 - Run native adapter integration tests only on owned fixtures.
 
-Historical [v0.19.0](https://github.com/spk-c/Qwen-dap-mcp/releases/tag/v0.19.0) was published as a GitHub release before npm was reconnected; [v0.19.1](https://github.com/spk-c/Qwen-dap-mcp/releases/tag/v0.19.1) was successfully published to both registries.
+[v0.19.3](https://github.com/spk-c/Qwen-dap-mcp/releases/tag/v0.19.3) documents multi-client stdio MCP integration (Claude Code, Codex, Gemini CLI, Cursor and VS Code Copilot) and provides protocol-handshake tests. Use the release's actual published status before assuming the npm package has been updated.\n\nHistorical [v0.19.0](https://github.com/spk-c/Qwen-dap-mcp/releases/tag/v0.19.0) was published as a GitHub release before npm was reconnected; [v0.19.1](https://github.com/spk-c/Qwen-dap-mcp/releases/tag/v0.19.1) was successfully published to both registries.
 
 ## Official MCP Registry
 

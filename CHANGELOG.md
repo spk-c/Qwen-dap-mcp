@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — Multi-client MCP discovery
+## [0.19.3] - 2026-11-02 — Multi-client MCP integration
 
 - Documented Claude Code, OpenAI Codex CLI/IDE, Gemini CLI, Cursor and VS Code Copilot local stdio setup with explicit cloud/local security boundaries.
 - Added example MCP configurations for each client, client-identity stdio initialize/tools-list smoke tests and a dedicated `npm run test:clients` entrypoint.
@@ -18,7 +18,7 @@
 - Included updated package and extension discovery descriptions; no runtime debugger behavior changes in this release.
 
 
-## Unreleased — development tooling updates
+## Historical development tooling updates
 
 - Completed full strict TypeScript migration of all 51 runtime modules (PRs #52–#56; zero strict diagnostics); restored precise documentation after earlier release notes described the in-progress migration.
 - Updated GitHub Actions checkout/setup-node/CodeQL major versions and development-only typing/compiler dependencies. No new package has been published for these unreleased changes.
