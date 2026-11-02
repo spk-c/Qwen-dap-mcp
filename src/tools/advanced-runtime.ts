@@ -1,17 +1,28 @@
 import * as z from 'zod/v4';
+import type { McpServer } from '@modelcontextprotocol/server';
+import type { GuardedDapSession } from '../dap/guarded-session.js';
+
+type RuntimeSnapshot = Awaited<ReturnType<GuardedDapSession['runtimeSnapshot']>>;
+type SessionStatus = ReturnType<GuardedDapSession['snapshot']>;
+type AbiChoice = 'auto' | 'windows-x64' | 'sysv-amd64' | 'aarch64';
+type ProgressProbeOptions = { samples?: number; intervalMs?: number; threadId?: number };
+type CausalTraceOptions = { name: string; maxDepth?: number; maxStops?: number; timeoutMs?: number };
+type CrashIdentity = { fingerprint: string; frameKey?: string; exceptionKey?: string };
+type RuntimeReportOptions = { includeOutputTail?: boolean; abi?: AbiChoice; redactPaths?: boolean };
+
 import { analyzeKnownApiCall, analyzeStackIntegrity, buildBreakpointPlan, buildFailureHypotheses, crashFingerprintsV2, } from '../diagnostics/runtime-v2.js';
 import { traceValue, findObservedValue } from './value-tracing.js';
 import { DEBUG_SESSION_CONTROL_ANNOTATIONS, READ_ONLY_LOCAL_TOOL_ANNOTATIONS, } from './tool-annotations.js';
 import { debugCausalTraceOutputSchema, debugProgressProbeOutputSchema, debugReverseExecutionOutputSchema, debugRuntimeReportOutputSchema, debugClusterCrashesOutputSchema, debugRegressionOracleOutputSchema, debugChildRequestsOutputSchema, structuredResult, } from './agent-output.js';
-function errorResult(error) {
+function errorResult(error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    return { content: [{ type: 'text', text: message }], isError: true };
+    return { content: [{ type: 'text' as const, text: message }], isError: true };
 }
-function normalizeHex(value) {
+function normalizeHex(value: string): string {
     return value.trim().toLowerCase().replace(/\`/g, '');
 }
-function variableMap(snapshot) {
-    const map = new Map();
+function variableMap(snapshot: RuntimeSnapshot): Map<string, string> {
+    const map = new Map<string, string>();
     for (const variable of [...snapshot.registers, ...snapshot.locals]) {
         map.set(variable.name.trim().toLowerCase(), variable.value);
         if (variable.evaluateName)
@@ -19,7 +30,7 @@ function variableMap(snapshot) {
     }
     return map;
 }
-function resolveAbi(snapshot, requested) {
+function resolveAbi(snapshot: RuntimeSnapshot, requested: AbiChoice): string {
     if (requested !== 'auto')
         return requested;
     const names = new Set(snapshot.registers.map((register) => register.name.toLowerCase()));
@@ -30,7 +41,7 @@ function resolveAbi(snapshot, requested) {
     }
     return 'unknown';
 }
-export function analyzeAbiArguments(snapshot, requested = 'auto') {
+export function analyzeAbiArguments(snapshot: RuntimeSnapshot, requested: AbiChoice = 'auto') {
     const abi = resolveAbi(snapshot, requested);
     const values = variableMap(snapshot);
     const registerOrder = abi === 'windows-x64' ? ['rcx', 'rdx', 'r8', 'r9']
@@ -59,7 +70,7 @@ const POISON_PATTERNS = new Map([
     ['0xbaadf00d', 'uninitialized-heap-pattern'],
     ['0xfdfdfdfd', 'heap-guard-pattern'],
 ]);
-export function detectMemoryHazards(snapshot) {
+export function detectMemoryHazards(snapshot: RuntimeSnapshot) {
     const findings = [];
     for (const variable of [...snapshot.locals, ...snapshot.registers]) {
         const normalized = normalizeHex(variable.value);
@@ -88,9 +99,9 @@ export function detectMemoryHazards(snapshot) {
     }
     return findings.slice(0, 100);
 }
-export function parseSanitizerEvidence(lines) {
-    const findings = [];
-    const seen = new Set();
+export function parseSanitizerEvidence(lines: string[]) {
+    const findings: Array<{ sanitizer: string; summary: string; evidenceSource: string }> = [];
+    const seen = new Set<string>();
     const joined = lines.join('\n');
     const patterns: Array<[RegExp, string]> = [
         [/ERROR:\s*AddressSanitizer:\s*([^\n]+)/i, 'asan'],
@@ -116,14 +127,14 @@ export function parseSanitizerEvidence(lines) {
     }
     return findings;
 }
-function stableFrameKey(snapshot) {
+function stableFrameKey(snapshot: RuntimeSnapshot): string {
     const frames = snapshot.stack.slice(0, 6).map((frame) => {
         const source = frame.source?.path ?? frame.source?.name ?? '';
         return `${frame.name}|${source}|${frame.line}`;
     });
     return frames.join('>');
 }
-function fingerprintFrameKey(snapshot) {
+function fingerprintFrameKey(snapshot: RuntimeSnapshot): string {
     return snapshot.stack.slice(0, 6).map((frame) => {
         const path = frame.source?.path;
         const basename = path ? (path.split(/[\\/]/).pop() ?? path) : undefined;
@@ -131,7 +142,7 @@ function fingerprintFrameKey(snapshot) {
         return `${frame.name}|${source}|${frame.line}`;
     }).join('>');
 }
-function exceptionKey(snapshot) {
+function exceptionKey(snapshot: RuntimeSnapshot): string {
     const exception = snapshot.exception;
     return [
         typeof exception?.exceptionId === 'string' ? exception.exceptionId : '',
@@ -139,7 +150,7 @@ function exceptionKey(snapshot) {
         snapshot.stopped?.reason ?? '',
     ].join('|');
 }
-function fnv1a64(input) {
+function fnv1a64(input: string): string {
     let hash = 0xcbf29ce484222325n;
     const prime = 0x100000001b3n;
     for (const byte of Buffer.from(input, 'utf8')) {
@@ -148,7 +159,7 @@ function fnv1a64(input) {
     }
     return hash.toString(16).padStart(16, '0');
 }
-export function buildCrashReport(snapshot, status, options: { includeOutputTail?: boolean; abi?: string; redactPaths?: boolean } = {}) {
+export function buildCrashReport(snapshot: RuntimeSnapshot, status: SessionStatus, options: RuntimeReportOptions = {}) {
     const rawFrameKey = stableFrameKey(snapshot);
     const rawExceptionKey = exceptionKey(snapshot);
     const dapOutput = options.includeOutputTail === false ? [] : status.recentEvents
@@ -216,7 +227,7 @@ export function buildCrashReport(snapshot, status, options: { includeOutputTail?
         ],
     };
 }
-function sampleSignature(snapshot) {
+function sampleSignature(snapshot: RuntimeSnapshot) {
     return {
         threadId: snapshot.thread.id,
         frame: snapshot.frame.name,
@@ -225,7 +236,7 @@ function sampleSignature(snapshot) {
         instruction: snapshot.frame.instructionPointerReference,
     };
 }
-export async function progressProbe(session, options) {
+export async function progressProbe(session: GuardedDapSession, options: ProgressProbeOptions) {
     return session.runExclusiveLifecycle('progress probe', async () => {
         if (session.isPostmortem())
             throw new Error('debug_progress_probe requires a live target; frozen dumps cannot demonstrate forward progress.');
@@ -291,7 +302,7 @@ export async function progressProbe(session, options) {
         };
     });
 }
-export async function causalTrace(session, options) {
+export async function causalTrace(session: GuardedDapSession, options: CausalTraceOptions) {
     return session.runExclusiveLifecycle('causal trace', async () => {
         const initial = await session.runtimeSnapshot({
             stackLevels: 16,
@@ -335,8 +346,8 @@ export async function causalTrace(session, options) {
         };
     });
 }
-export function clusterCrashReports(reports) {
-    const clusters = new Map();
+export function clusterCrashReports(reports: CrashIdentity[]) {
+    const clusters = new Map<string, CrashIdentity[]>();
     for (const report of reports) {
         const bucket = clusters.get(report.fingerprint) ?? [];
         bucket.push(report);
@@ -354,7 +365,7 @@ export function clusterCrashReports(reports) {
         note: 'Clustering uses qwen-dap-mcp normalized crash fingerprints. Re-open representative dumps when deeper semantic confirmation is needed.',
     };
 }
-export function regressionOracle(currentFingerprint, baselineFingerprint, terminal = true) {
+export function regressionOracle(currentFingerprint: string, baselineFingerprint: string, terminal = true) {
     const verdict = !terminal
         ? 'inconclusive'
         : currentFingerprint === baselineFingerprint
@@ -371,7 +382,7 @@ export function regressionOracle(currentFingerprint, baselineFingerprint, termin
             : 'Only a complete terminal reproduction should be used as a strong bisect oracle.',
     };
 }
-export function registerAdvancedRuntimeTools(server, session) {
+export function registerAdvancedRuntimeTools(server: McpServer, session: GuardedDapSession): void {
     server.registerTool('debug_causal_trace', {
         title: 'Trace Runtime Causality',
         description: 'Build a bounded consumer-to-writer evidence chain for one suspicious debugger-visible value. Use it after crash or differential evidence identifies a value whose runtime producers matter. It combines the current stopped snapshot with repeated watchpoint writer tracing. Do not use it for frozen dumps or unsafe-to-resume targets, and do not treat an observed writer as automatic proof of root cause.',
@@ -383,7 +394,7 @@ export function registerAdvancedRuntimeTools(server, session) {
             maxStops: z.number().int().min(1).max(16).default(8).describe('Maximum watchpoint stops available to the underlying bounded temporal trace.'),
             timeoutMs: z.number().int().min(1000).max(120_000).default(60_000).describe('Aggregate deadline for the entire causal trace operation.'),
         }),
-    }, async (args) => {
+    }, async (args: CausalTraceOptions) => {
         try {
             return structuredResult(await causalTrace(session, args));
         }
@@ -401,7 +412,7 @@ export function registerAdvancedRuntimeTools(server, session) {
             intervalMs: z.number().int().min(25).max(5000).default(250).describe('Approximate execution interval between debugger samples.'),
             threadId: z.number().int().positive().optional().describe('Preferred thread to sample; omit to follow the debugger-selected stopped thread.'),
         }),
-    }, async (args) => {
+    }, async (args: ProgressProbeOptions) => {
         try {
             return structuredResult(await progressProbe(session, args));
         }
@@ -420,7 +431,7 @@ export function registerAdvancedRuntimeTools(server, session) {
             waitForStop: z.boolean().default(true).describe('Wait for the next stopped event after the reverse request before returning.'),
             timeoutMs: z.number().int().min(1000).max(120_000).default(15_000).describe('Maximum time to wait for the reverse operation and resulting stopped event.'),
         }),
-    }, async ({ action, threadId, waitForStop, timeoutMs }) => {
+    }, async ({ action, threadId, waitForStop, timeoutMs }: { action: 'reverseContinue' | 'stepBack'; threadId: number; waitForStop: boolean; timeoutMs: number }) => {
         try {
             if (session.isPostmortem())
                 throw new Error('debug_reverse_execution requires a live record/replay-capable target.');
@@ -443,7 +454,7 @@ export function registerAdvancedRuntimeTools(server, session) {
             includeOutputTail: z.boolean().default(true).describe('Include the bounded recent adapter stderr tail used for sanitizer correlation.'),
             abi: z.enum(['auto', 'windows-x64', 'sysv-amd64', 'aarch64']).default('auto').describe('ABI used to map argument registers; auto infers from debugger registers and host platform when possible.'),
         }),
-    }, async (args) => {
+    }, async (args: RuntimeReportOptions) => {
         try {
             const snapshot = await session.runtimeSnapshot({ stackLevels: 24, maxVariablesPerScope: 150, includeDisassembly: true, includeModules: true, includeExceptionInfo: true });
             return structuredResult(buildCrashReport(snapshot, session.snapshot(), args));
@@ -464,7 +475,7 @@ export function registerAdvancedRuntimeTools(server, session) {
                 exceptionKey: z.string().optional(),
             })).min(1).max(500).describe('Runtime-report identities to cluster; typically copy fingerprint/frameKey/exceptionKey from debug_runtime_report results.'),
         }),
-    }, async ({ reports }) => structuredResult(clusterCrashReports(reports)));
+    }, async ({ reports }: { reports: CrashIdentity[] }) => structuredResult(clusterCrashReports(reports)));
     server.registerTool('debug_child_requests', {
         title: 'Inspect Child Debug Requests',
         description: 'Inspect bounded DAP reverse requests such as startDebugging emitted by an adapter when a child, fork, worker, or subprocess wants a debugger session. Use it to discover child-debug opportunities without silently granting adapter-controlled process execution. This tool is read-only: qwen-dap-mcp continues to reject reverse requests by default, so do not expect it to auto-launch child sessions.',
@@ -473,7 +484,7 @@ export function registerAdvancedRuntimeTools(server, session) {
         inputSchema: z.object({
             command: z.string().min(1).optional().describe('Optional reverse-request command filter, for example startDebugging; omit to return the bounded recent history.'),
         }),
-    }, async ({ command }) => {
+    }, async ({ command }: { command?: string }) => {
         const requests = session.connection.recentReverseRequests
             .filter((request) => !command || request.command === command)
             .slice(-50);
@@ -497,6 +508,6 @@ export function registerAdvancedRuntimeTools(server, session) {
             currentFingerprint: z.string().min(1).describe('Fingerprint produced by the current reproduction or runtime report.'),
             terminal: z.boolean().default(true).describe('Whether the reproduction reached a complete terminal crash/exit state rather than an early debugger stop.'),
         }),
-    }, async ({ baselineFingerprint, currentFingerprint, terminal }) => structuredResult(regressionOracle(currentFingerprint, baselineFingerprint, terminal)));
+    }, async ({ baselineFingerprint, currentFingerprint, terminal }: { baselineFingerprint: string; currentFingerprint: string; terminal: boolean }) => structuredResult(regressionOracle(currentFingerprint, baselineFingerprint, terminal)));
 }
 //# sourceMappingURL=advanced-runtime.js.map
