@@ -1,15 +1,29 @@
 import * as z from 'zod/v4';
+import type { McpServer } from '@modelcontextprotocol/server';
+import type { DebugProtocol } from '@vscode/debugprotocol';
+import type { GuardedDapSession } from '../dap/guarded-session.js';
+import type { RuntimeSnapshotOptions } from '../dap/session.js';
 import { runWithDapOperationContext } from '../dap/operation-context.js';
 import { findWriter } from './find-writer.js';
 import { debugTraceValueOutputSchema, structuredResult } from './agent-output.js';
 import { DEBUG_SESSION_CONTROL_ANNOTATIONS } from './tool-annotations.js';
-function errorMessage(error) {
+type ValueSnapshot = { locals: DebugProtocol.Variable[]; registers: DebugProtocol.Variable[] };
+type TraceOptions = {
+    name: string;
+    accessType?: 'write' | 'readWrite';
+    threadId?: number;
+    maxStops?: number;
+    timeoutMs?: number;
+    perStopTimeoutMs?: number;
+    snapshot?: RuntimeSnapshotOptions;
+};
+function errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
 }
-function normalizedExpression(value) {
+function normalizedExpression(value: string): string {
     return value.trim().replace(/^this->/, '').replace(/^\*/, '');
 }
-export function findObservedValue(snapshot, expression) {
+export function findObservedValue(snapshot: ValueSnapshot, expression: string) {
     const target = normalizedExpression(expression);
     const candidates = [...snapshot.locals, ...snapshot.registers];
     const exact = candidates.find((variable) => {
@@ -27,7 +41,7 @@ export function findObservedValue(snapshot, expression) {
         ...(exact.evaluateName ? { evaluateName: exact.evaluateName } : {}),
     };
 }
-export async function traceValue(session, options) {
+export async function traceValue(session: GuardedDapSession, options: TraceOptions) {
     const maxStops = options.maxStops ?? 8;
     const timeoutMs = options.timeoutMs ?? 60_000;
     const perStopTimeoutMs = options.perStopTimeoutMs ?? 15_000;
@@ -43,9 +57,9 @@ export async function traceValue(session, options) {
             throw new Error('debug_trace_value requires a live stopped target; a crash dump cannot produce a write timeline.');
         }
         let currentSnapshot = await session.runtimeSnapshot(snapshotOptions);
-        const events = [];
+        const events: Array<{ index: number; strategy: string; hitConfirmed: boolean; outcome: unknown; writerFrame?: unknown; writerCorrelation?: unknown; beforeValue?: ReturnType<typeof findObservedValue>; afterValue?: ReturnType<typeof findObservedValue>; valueChanged?: boolean }> = [];
         let stopReason = 'max-stops';
-        let terminalError;
+        let terminalError: string | undefined;
         for (let index = 0; index < maxStops; index += 1) {
             operation.throwIfAborted();
             const beforeValue = findObservedValue(currentSnapshot, options.name);
@@ -121,10 +135,10 @@ export async function traceValue(session, options) {
         };
     }));
 }
-function errorResult(error) {
-    return { content: [{ type: 'text', text: errorMessage(error) }], isError: true };
+function errorResult(error: unknown) {
+    return { content: [{ type: 'text' as const, text: errorMessage(error) }], isError: true };
 }
-export function registerValueTracingTool(server, session) {
+export function registerValueTracingTool(server: McpServer, session: GuardedDapSession): void {
     server.registerTool('debug_trace_value', {
         title: 'Trace Runtime Value Writes',
         description: 'Build a bounded temporal write timeline for one debugger-visible variable or expression. Use this after differential or crash evidence identifies a suspicious value and repeated live-target resume is safe. The tool installs one temporary data breakpoint or watchpoint at a time, resumes to the next confirmed writer, captures bounded runtime evidence, removes only its own temporary watch, and repeats. Do not use it for crash dumps, unsafe-to-resume targets, or as proof that an observed writer is the root cause; it stops on unrelated debugger events rather than continuing through them.',
@@ -148,7 +162,7 @@ export function registerValueTracingTool(server, session) {
                 includeExceptionInfo: z.boolean().default(true),
             }).optional().describe('Optional bounded evidence settings for each observed writer stop.'),
         }),
-    }, async (options) => {
+    }, async (options: TraceOptions) => {
         try {
             return structuredResult(await traceValue(session, options));
         }
