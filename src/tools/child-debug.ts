@@ -1,27 +1,49 @@
 import * as z from 'zod/v4';
+import type { McpServer } from '@modelcontextprotocol/server';
+import type { GuardedDapSession } from '../dap/guarded-session.js';
+import type { DapSessionRegistry } from '../dap/session-registry.js';
 import { buildCodeLldbAttachConfiguration, buildCodeLldbLaunchConfiguration, discoverCodeLldb, } from '../adapters/codelldb.js';
 import { buildGdbDapLaunchConfiguration, buildGdbDapPidAttachConfiguration, discoverGdbDap, } from '../adapters/gdb-dap.js';
 import { buildLldbDapAttachConfiguration, buildLldbDapLaunchConfiguration, discoverLldbDap, } from '../adapters/lldb-dap.js';
 import { DapError } from '../dap/errors.js';
 import { debugAdoptChildOutputSchema, structuredResult } from './agent-output.js';
 import { LOCAL_TARGET_EXECUTION_ANNOTATIONS } from './tool-annotations.js';
+type StartRequest = { arguments?: unknown };
+type StartOverrides = { program?: string };
+type StartConfiguration = (
+    | { request: 'launch'; program: string; pid?: number }
+    | { request: 'attach'; pid: number; program?: string }
+) & {
+    cwd?: string;
+    args?: string[];
+    env?: NodeJS.ProcessEnv;
+    stopOnEntry: boolean;
+};
+type AdoptArgs = {
+    requestIndex: number;
+    childSessionId?: string;
+    adapter: 'gdb' | 'lldb-dap' | 'codelldb';
+    adapterPath?: string;
+    program?: string;
+    requestTimeoutMs: number;
+};
 const CHILD_DEBUG_ENV = 'QWEN_DAP_MCP_CHILD_DEBUG';
-function errorResult(error) {
+function errorResult(error: unknown) {
     return {
-        content: [{ type: 'text', text: error instanceof Error ? error.message : String(error) }],
+        content: [{ type: 'text' as const, text: error instanceof Error ? error.message : String(error) }],
         isError: true,
     };
 }
-function enabled(env = process.env) {
+function enabled(env: NodeJS.ProcessEnv = process.env): boolean {
     return /^(?:1|true|yes|on)$/i.test(env[CHILD_DEBUG_ENV]?.trim() ?? '');
 }
-function asObject(value, label) {
+function asObject(value: unknown, label: string): Record<string, unknown> {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
         throw new DapError(label + ' must be an object.');
     }
-    return value;
+    return value as Record<string, unknown>;
 }
-function safeStringArray(value) {
+function safeStringArray(value: unknown): string[] | undefined {
     if (value === undefined)
         return undefined;
     if (!Array.isArray(value) || value.length > 128 || !value.every((item) => typeof item === 'string')) {
@@ -39,7 +61,7 @@ function safeEnv(value: unknown): NodeJS.ProcessEnv | undefined {
     }
     return Object.fromEntries(entries) as NodeJS.ProcessEnv;
 }
-export function sanitizeStartConfiguration(request, overrides) {
+export function sanitizeStartConfiguration(request: StartRequest, overrides: StartOverrides): StartConfiguration {
     const requestArgs = asObject(request.arguments, 'startDebugging arguments');
     const rawConfig = asObject(requestArgs.configuration, 'startDebugging configuration');
     const serialized = JSON.stringify(rawConfig);
@@ -72,9 +94,9 @@ export function sanitizeStartConfiguration(request, overrides) {
         ...(env ? { env } : {}),
         stopOnEntry,
         ...(pid ? { pid } : {}),
-    };
+    } as StartConfiguration;
 }
-export function registerChildDebugTools(server, parentSession, registry) {
+export function registerChildDebugTools(server: McpServer, parentSession: GuardedDapSession, registry: DapSessionRegistry): void {
     server.registerTool('debug_adopt_child', {
         title: 'Adopt Child Debug Request',
         description: `Explicitly adopt one captured DAP startDebugging request into a new isolated debugger session after validating a small launch/attach configuration subset. Use it only when ${CHILD_DEBUG_ENV}=1 and the child target is authorized. Do not use it as an automatic reverse-request executor: arbitrary adapter commands, terminal requests, remote targets, and unknown configuration fields are not forwarded.`,
@@ -88,7 +110,7 @@ export function registerChildDebugTools(server, parentSession, registry) {
             program: z.string().min(1).optional().describe('Optional explicit child executable override; useful when the reverse request omitted a symbol/program path.'),
             requestTimeoutMs: z.number().int().min(1000).max(120000).default(30000).describe('Per-request DAP timeout for child adapter initialization and launch/attach.'),
         }),
-    }, async ({ requestIndex, childSessionId, adapter, adapterPath, program, requestTimeoutMs }) => {
+    }, async ({ requestIndex, childSessionId, adapter, adapterPath, program, requestTimeoutMs }: AdoptArgs) => {
         try {
             if (!enabled()) {
                 throw new DapError(`Child adoption is disabled. Set ${CHILD_DEBUG_ENV}=1 only when adapter-originated child targets are explicitly trusted and authorized.`);
