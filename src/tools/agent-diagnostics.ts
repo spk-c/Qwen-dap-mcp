@@ -1,4 +1,8 @@
 import * as z from 'zod/v4';
+import type { McpServer } from '@modelcontextprotocol/server';
+import type { DebugProtocol } from '@vscode/debugprotocol';
+import type { GuardedDapSession } from '../dap/guarded-session.js';
+import type { RuntimeSnapshotOptions } from '../dap/session.js';
 import { buildCodeLldbLaunchConfiguration, discoverCodeLldb } from '../adapters/codelldb.js';
 import { buildGdbDapLaunchConfiguration, discoverGdbDap } from '../adapters/gdb-dap.js';
 import { buildLldbDapLaunchConfiguration, discoverLldbDap } from '../adapters/lldb-dap.js';
@@ -98,14 +102,60 @@ const workflowSchema = z.object({
     agentState: autonomousAgentStateSchema.optional().describe('Opaque autonomous state returned by the previous autonomous call; pass it back unchanged to continue the bounded cycle.'),
     maxIterations: z.number().int().positive().max(10).default(3).describe('Maximum autonomous fix/reproduce iterations allowed when starting stage=autonomous.'),
 }).describe('Controls one-shot diagnosis, explicit verification, or the bounded autonomous crash workflow.');
-function result(value) {
+type RuntimeSnapshot = Awaited<ReturnType<GuardedDapSession['runtimeSnapshot']>>;
+type AnalysisOptions = {
+    projectRoots?: string[];
+    projectModules?: string[];
+    callerDepth?: number;
+    program?: string;
+    cwd?: string;
+};
+type FrameEvidence = {
+    index: number;
+    frame: DebugProtocol.StackFrame;
+    locals: DebugProtocol.Variable[];
+    registers: DebugProtocol.Variable[];
+    disassembly?: DebugProtocol.DisassembledInstruction[];
+    collectionErrors?: string[];
+};
+type TerminalOutcome = { event: string; body?: { exitCode?: number } };
+type BreakpointGroup = { source: string; lines: number[] };
+type StopToolArgs = z.output<typeof snapshotSchema> & { analysis?: z.output<typeof analysisSchema> };
+type SourceDisassemblyArgs = {
+    threadId?: number;
+    stackLevels: number;
+    disassembleBefore: number;
+    disassembleAfter: number;
+    analysis?: z.output<typeof analysisSchema>;
+};
+type CrashToolArgs = {
+    mode: 'current' | 'live' | 'codelldb' | 'lldb-dap' | 'gdb' | 'dump';
+    request: 'launch' | 'attach';
+    configuration?: Record<string, unknown>;
+    breakpoints?: BreakpointGroup[];
+    timeoutMs: number;
+    program?: string;
+    args?: string[];
+    cwd?: string;
+    env?: Record<string, string>;
+    stopOnEntry: boolean;
+    adapterPath?: string;
+    dumpAdapter: 'codelldb' | 'lldb-dap' | 'gdb';
+    requestTimeoutMs: number;
+    dumpPath?: string;
+    sourceMap?: Record<string, string>;
+    snapshot?: z.output<typeof snapshotSchema>;
+    analysis?: z.output<typeof analysisSchema>;
+    workflow?: z.output<typeof workflowSchema>;
+};
+function result(value: unknown) {
     return structuredResult(value);
 }
-function errorResult(error) {
+function errorResult(error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    return { content: [{ type: 'text', text: message }], isError: true };
+    return { content: [{ type: 'text' as const, text: message }], isError: true };
 }
-function terminalOutcomeDiagnosis(outcome) {
+function terminalOutcomeDiagnosis(outcome: TerminalOutcome) {
     const body = outcome.body;
     const exitCode = typeof body?.exitCode === 'number' ? body.exitCode : undefined;
     const abnormalExit = exitCode !== undefined && exitCode !== 0;
@@ -132,9 +182,9 @@ function terminalOutcomeDiagnosis(outcome) {
             ],
     };
 }
-function dedupeVariables(variables) {
-    const seen = new Set();
-    const output = [];
+function dedupeVariables(variables: DebugProtocol.Variable[]): DebugProtocol.Variable[] {
+    const seen = new Set<string>();
+    const output: DebugProtocol.Variable[] = [];
     for (const variable of variables) {
         const key = `${variable.name}\u0000${variable.value}\u0000${variable.type ?? ''}`;
         if (seen.has(key))
@@ -144,10 +194,10 @@ function dedupeVariables(variables) {
     }
     return output;
 }
-async function captureFrameEvidence(session, frame, index, options, includeDisassembly) {
+async function captureFrameEvidence(session: GuardedDapSession, frame: DebugProtocol.StackFrame, index: number, options: RuntimeSnapshotOptions, includeDisassembly: boolean): Promise<FrameEvidence> {
     const maxVariables = options.maxVariablesPerScope ?? 100;
     const collectionErrors = [];
-    let scopes = [];
+    let scopes: DebugProtocol.Scope[] = [];
     try {
         scopes = await session.scopes(frame.id);
     }
@@ -156,7 +206,7 @@ async function captureFrameEvidence(session, frame, index, options, includeDisas
     }
     const localScopes = scopes.filter((scope) => /locals?|arguments?|parameters?/i.test(scope.name));
     const registerScope = scopes.find((scope) => /register/i.test(scope.name));
-    const locals = [];
+    const locals: DebugProtocol.Variable[] = [];
     for (const scope of localScopes.slice(0, 3)) {
         if (scope.variablesReference <= 0)
             continue;
@@ -167,7 +217,7 @@ async function captureFrameEvidence(session, frame, index, options, includeDisas
             collectionErrors.push(`${scope.name}: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
-    let registers = [];
+    let registers: DebugProtocol.Variable[] = [];
     if (registerScope && registerScope.variablesReference > 0) {
         try {
             registers = await session.variables(registerScope.variablesReference, 0, maxVariables);
@@ -196,14 +246,14 @@ async function captureFrameEvidence(session, frame, index, options, includeDisas
         ...(collectionErrors.length === 0 ? {} : { collectionErrors }),
     };
 }
-function mergedAnalysisOptions(analysis, program, cwd) {
+function mergedAnalysisOptions(analysis: AnalysisOptions | undefined, program: string | undefined, cwd: string | undefined): AnalysisOptions {
     return {
         ...(analysis ?? {}),
         ...(program ? { program } : {}),
         ...(cwd ? { cwd } : {}),
     };
 }
-async function diagnoseSnapshot(session, snapshot, snapshotOptions, analysisOptions) {
+async function diagnoseSnapshot(session: GuardedDapSession, snapshot: RuntimeSnapshot, snapshotOptions: RuntimeSnapshotOptions, analysisOptions: AnalysisOptions) {
     const base = analyzeRuntimeSnapshot(snapshot);
     const selection = selectProjectFrame(snapshot.stack, analysisOptions);
     const callerDepth = analysisOptions.callerDepth ?? 3;
@@ -214,7 +264,7 @@ async function diagnoseSnapshot(session, snapshot, snapshotOptions, analysisOpti
             .slice(0, callerDepth)
             .map((item) => item.index),
     ];
-    const evidence = [];
+    const evidence: FrameEvidence[] = [];
     for (const index of [...new Set(evidenceIndexes)]) {
         const frame = snapshot.stack[index];
         if (!frame)
@@ -236,7 +286,7 @@ async function diagnoseSnapshot(session, snapshot, snapshotOptions, analysisOpti
     }
     return buildIntelligentDiagnosis(snapshot, base, selection, evidence);
 }
-async function captureDiagnosticSnapshot(session, options: import('../dap/session.js').RuntimeSnapshotOptions = {}, analysisOptions = {}) {
+async function captureDiagnosticSnapshot(session: GuardedDapSession, options: RuntimeSnapshotOptions = {}, analysisOptions: AnalysisOptions = {}) {
     const snapshot = await session.runtimeSnapshot({
         ...options,
         includeDisassembly: options.includeDisassembly ?? true,
@@ -248,7 +298,7 @@ async function captureDiagnosticSnapshot(session, options: import('../dap/sessio
         diagnosis: await diagnoseSnapshot(session, snapshot, options, analysisOptions),
     };
 }
-function terminalForVerification(outcome) {
+function terminalForVerification(outcome: TerminalOutcome) {
     const body = outcome.body;
     return {
         event: outcome.event,
@@ -331,7 +381,7 @@ function workflowMetadata(stage, baseline, diagnosis, terminal, agentState, maxI
             : {}),
     };
 }
-async function resetOwnedSessionAfterFailure(session, error) {
+async function resetOwnedSessionAfterFailure(session: GuardedDapSession, error: unknown): Promise<never> {
     try {
         await session.reset();
     }
@@ -342,14 +392,14 @@ async function resetOwnedSessionAfterFailure(session, error) {
     }
     throw error;
 }
-export function registerAgentDiagnosticTools(server, session) {
+export function registerAgentDiagnosticTools(server: McpServer, session: GuardedDapSession): void {
     server.registerTool('debug_diagnose_stop', {
         title: 'Diagnose Current Debug Stop',
         description: 'Diagnose an already stopped live or postmortem debug session without changing execution state. Use this when a debugger has captured the failure and you want project-frame selection, crash classification, operand/register/variable bindings, call-chain provenance, ranked hypotheses, and a fix/rebuild/reproduce/verify plan; use debug_snapshot instead when only raw evidence is needed. The tool is read-only and returns both the bounded snapshot and the derived diagnosis, including collection limitations when optional debugger evidence is unavailable.',
         annotations: READ_ONLY_LOCAL_TOOL_ANNOTATIONS,
         outputSchema: debugDiagnoseStopOutputSchema,
         inputSchema: snapshotSchema.extend({ analysis: analysisSchema.optional() }),
-    }, async ({ analysis, ...options }) => {
+    }, async ({ analysis, ...options }: StopToolArgs) => {
         try {
             return result(await captureDiagnosticSnapshot(session, options, analysis));
         }
@@ -369,7 +419,7 @@ export function registerAgentDiagnosticTools(server, session) {
             disassembleAfter: z.number().int().nonnegative().max(100).default(12).describe('Instructions after the selected instruction included in each disassembly window.'),
             analysis: analysisSchema.optional(),
         }),
-    }, async ({ threadId, stackLevels, disassembleBefore, disassembleAfter, analysis }) => {
+    }, async ({ threadId, stackLevels, disassembleBefore, disassembleAfter, analysis }: SourceDisassemblyArgs) => {
         try {
             const snapshotOptions = {
                 ...(threadId === undefined ? {} : { threadId }),
@@ -440,7 +490,7 @@ export function registerAgentDiagnosticTools(server, session) {
             analysis: analysisSchema.optional(),
             workflow: workflowSchema.optional(),
         }),
-    }, async ({ mode, request, configuration, breakpoints, timeoutMs, program, args, cwd, env, stopOnEntry, adapterPath, dumpAdapter, requestTimeoutMs, dumpPath, sourceMap, snapshot, analysis, workflow, }) => {
+    }, async ({ mode, request, configuration, breakpoints, timeoutMs, program, args, cwd, env, stopOnEntry, adapterPath, dumpAdapter, requestTimeoutMs, dumpPath, sourceMap, snapshot, analysis, workflow, }: CrashToolArgs) => {
         try {
             return result(await session.runExclusiveLifecycle('debug this crash', async () => {
                 const snapshotOptions = (snapshot ?? {});
