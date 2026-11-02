@@ -19,9 +19,13 @@ function verify(from, relative = '') {
     const p = join(from, entry.name);
     if (entry.isDirectory()) verify(p, name);
     else if (entry.isFile() && entry.name.endsWith('.js')) {
-      assert.equal(readFileSync(p, 'utf8'), readFileSync(join(root, 'dist', name), 'utf8'), 'Source/distribution drift: ' + name);
+      const code = readFileSync(p, 'utf8');
+      assert.equal(code, readFileSync(join(root, 'dist', name), 'utf8'), 'Source/distribution drift: ' + name);
+      assert.ok(!code.includes('sourceMappingURL='), 'Dangling source map reference in ' + name);
       assert.ok(existsSync(join(root, 'dist', name.slice(0,-3)+'.d.ts')), 'Missing generated declaration: ' + name);
-      assert.ok(existsSync(join(root, 'src', name.slice(0, -3) + '.ts')), 'Missing TypeScript source for ' + name);
+      const tsFile = join(root, 'src', name.slice(0, -3) + '.ts');
+      assert.ok(existsSync(tsFile), 'Missing TypeScript source for ' + name);
+      assert.ok(!readFileSync(tsFile, 'utf8').includes('sourceMappingURL='), 'Stale TypeScript source map reference in ' + name);
       checked++;
     }
   }
