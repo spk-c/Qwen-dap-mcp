@@ -4,6 +4,7 @@ import { normalizeEnvironmentOverrides } from './environment.js';
 import { createGuardedDapRequestPolicy, createHolGuardEvaluator, requireHolGuardAdapterStart, } from './hol-guard-policy.js';
 import { normalizePostmortemSnapshot } from './postmortem-normalization.js';
 import { DapSession, } from './session.js';
+import type { RuntimeSnapshotOptions } from './session.js';
 /**
  * DapSession with an explicit frozen postmortem mode, serialized lifecycle,
  * and optional HOL Guard enforcement at the process/code-execution choke
@@ -32,7 +33,7 @@ export class GuardedDapSession extends DapSession {
         this.holGuardEvaluator = options.holGuardEvaluator ?? createHolGuardEvaluator();
         this.connection.setRequestPolicy(createGuardedDapRequestPolicy(this.holGuardEvaluator, options.dapPolicyMode, () => this.holGuardExecutionContext));
     }
-    async start(options) {
+    async start(options: Parameters<DapSession['start']>[0]) {
         return this.runExclusiveLifecycle('start', async () => {
             // DapConnection.start() directly spawns the adapter and intentionally sits
             // outside sendRequest(). Gate it before reset/spawn can create a side
@@ -73,10 +74,10 @@ export class GuardedDapSession extends DapSession {
             }
         });
     }
-    async launch(configuration, breakpoints = []) {
+    async launch(configuration: Parameters<DapSession['launch']>[0], breakpoints: NonNullable<Parameters<DapSession['launch']>[1]> = []) {
         return this.runExclusiveLifecycle('launch', () => super.launch(configuration, breakpoints));
     }
-    async attach(configuration, breakpoints = []) {
+    async attach(configuration: Parameters<DapSession['attach']>[0], breakpoints: NonNullable<Parameters<DapSession['attach']>[1]> = []) {
         return this.runExclusiveLifecycle('attach', () => super.attach(configuration, breakpoints));
     }
     async disconnect(terminateDebuggee = true) {
@@ -128,7 +129,7 @@ export class GuardedDapSession extends DapSession {
     isPostmortem(): boolean {
         return this.postmortem;
     }
-    async runtimeSnapshot(options = {}) {
+    async runtimeSnapshot(options: RuntimeSnapshotOptions = {}) {
         const snapshot = await super.runtimeSnapshot(options);
         return this.postmortem ? normalizePostmortemSnapshot(snapshot) : snapshot;
     }
@@ -141,31 +142,31 @@ export class GuardedDapSession extends DapSession {
                 : { lifecycleOperation: this.activeLifecycleOperation.name }),
         };
     }
-    async pause(threadId, waitForStop = true, timeoutMs = 15_000) {
+    async pause(threadId: number, waitForStop = true, timeoutMs = 15_000) {
         this.assertLiveOperation('pause');
         return super.pause(threadId, waitForStop, timeoutMs);
     }
-    async continueExecution(threadId, waitForStop = true, timeoutMs = 15_000) {
+    async continueExecution(threadId: number, waitForStop = true, timeoutMs = 15_000) {
         this.assertLiveOperation('continue');
         return super.continueExecution(threadId, waitForStop, timeoutMs);
     }
-    async step(action, threadId, waitForStop = true, timeoutMs = 15_000) {
+    async step(action: Parameters<DapSession['step']>[0], threadId: number, waitForStop = true, timeoutMs = 15_000) {
         this.assertLiveOperation(action);
         return super.step(action, threadId, waitForStop, timeoutMs);
     }
-    async reverseContinue(threadId, waitForStop = true, timeoutMs = 15_000) {
+    async reverseContinue(threadId: number, waitForStop = true, timeoutMs = 15_000) {
         this.assertLiveOperation('reverseContinue');
         return super.reverseContinue(threadId, waitForStop, timeoutMs);
     }
-    async stepBack(threadId, waitForStop = true, timeoutMs = 15_000) {
+    async stepBack(threadId: number, waitForStop = true, timeoutMs = 15_000) {
         this.assertLiveOperation('stepBack');
         return super.stepBack(threadId, waitForStop, timeoutMs);
     }
-    async dataBreakpointInfo(name, variablesReference, frameId) {
+    async dataBreakpointInfo(name: string, variablesReference?: number, frameId?: number) {
         this.assertLiveOperation('dataBreakpointInfo');
         return super.dataBreakpointInfo(name, variablesReference, frameId);
     }
-    async setDataBreakpoints(breakpoints) {
+    async setDataBreakpoints(breakpoints: Parameters<DapSession['setDataBreakpoints']>[0]) {
         this.assertLiveOperation('setDataBreakpoints');
         return super.setDataBreakpoints(breakpoints);
     }
