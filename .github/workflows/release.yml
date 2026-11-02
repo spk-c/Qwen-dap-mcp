@@ -31,7 +31,7 @@ jobs:
         run: |
           test "$GITHUB_REF" = "refs/heads/main" || { echo 'Run this workflow from main only.'; exit 1; }
           test "$VERSION" = "0.19.0" || { echo 'This release workflow is restricted to 0.19.0.'; exit 1; }
-          node -e "const p=require('./package.json');const q=require('./qwen-extension.json');if(p.version!=='0.19.0'||q.version!==p.version||p.private!==true)process.exit(1)"
+          node -e "const p=require('./package.json');const q=require('./qwen-extension.json');if(p.version!=='0.19.0'||q.version!==p.version||p.private!==false||p.name!=='@slp-dev1/qwen-dap-mcp')process.exit(1)"
       - name: Require successful CI, native debuggers, postmortem, remote and CodeQL
         env:
           GH_TOKEN: ${{ github.token }}
