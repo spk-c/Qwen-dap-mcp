@@ -241,7 +241,7 @@ export function analyzeStackIntegrity(snapshot: RuntimeSnapshot, outputLines: st
         findings.push({
             kind: 'non-16-byte-aligned-stack-pointer',
             register: spName,
-            value: registerMap.get(spName),
+            value: registerMap.get(spName!),
             confidence: 'low',
             note: 'A debugger stop can occur at a point where platform call-site alignment rules do not directly apply.',
         });
@@ -391,7 +391,7 @@ export function buildFailureHypotheses(options: HypothesisOptions): FailureHypot
 }
 export function buildBreakpointPlan(hypotheses: FailureHypothesis[], snapshot: RuntimeSnapshot) {
     const functions = new Set<string>();
-    const reasons: Array<{ function: string; reason: string; hypothesis: string }> = [];
+    const reasons = [];
     const add = (name: string, reason: string, hypothesis: string) => {
         if (!functions.has(name)) {
             functions.add(name);
