@@ -8,7 +8,7 @@ Use the GitHub repository's **Security → Report a vulnerability** private repo
 
 ## Supported version
 
-The maintained GitHub fork on `main` is supported. Historical upstream npm packages under `@slp-dev1` are not maintained by this fork.
+Maintained releases are published as `@slp-dev1/qwen-dap-mcp` from `spk-c/Qwen-dap-mcp`. Check the latest GitHub release and npm version. Old published versions may no longer receive security fixes.
 
 ## Security defaults and boundaries
 
