@@ -1,4 +1,22 @@
 import * as z from 'zod/v4';
+import type { McpServer } from '@modelcontextprotocol/server';
+import type { GuardedDapSession } from '../dap/guarded-session.js';
+type DumpOpenArgs = {
+    dumpPath: string;
+    program?: string;
+    sourceMap?: Record<string, string>;
+    adapter?: 'gdb' | 'lldb-dap' | 'codelldb';
+    adapterPath?: string;
+    cwd?: string;
+    requestTimeoutMs?: number;
+    threadId?: number;
+    stackLevels?: number;
+    maxVariablesPerScope?: number;
+    includeDisassembly?: boolean;
+    includeModules?: boolean;
+    moduleCount?: number;
+};
+
 import { discoverCodeLldb } from '../adapters/codelldb.js';
 import { buildCodeLldbDumpConfiguration } from '../adapters/codelldb-dump.js';
 import { buildGdbDapCoreConfiguration, discoverGdbDap } from '../adapters/gdb-dap.js';
@@ -7,7 +25,7 @@ import { DapError } from '../dap/errors.js';
 import { logger } from '../logger.js';
 import { READ_ONLY_LOCAL_TOOL_ANNOTATIONS } from './tool-annotations.js';
 import { debugOpenDumpOutputSchema, structuredResult } from './agent-output.js';
-export async function openDump(session, options) {
+export async function openDump(session: GuardedDapSession, options: DumpOpenArgs) {
     return session.runExclusiveLifecycle('open dump', async () => {
         const adapterKind = options.adapter ?? 'codelldb';
         // Validate dump/program paths before spawning an adapter. A bad local path
@@ -48,7 +66,7 @@ export async function openDump(session, options) {
         try {
             const capabilities = await session.start({
                 command: adapter.command,
-                ...('args' in adapter ? { args: adapter.args } : {}),
+                ...('args' in adapter ? { args: adapter.args as string[] } : {}),
                 adapterId: adapterKind === 'gdb' ? 'gdb' : adapterKind === 'lldb-dap' ? 'lldb-dap' : 'lldb',
                 ...(options.cwd ? { cwd: options.cwd } : {}),
                 requestTimeoutMs: options.requestTimeoutMs ?? 30_000,
@@ -99,15 +117,15 @@ export async function openDump(session, options) {
         }
     });
 }
-function result(value) {
+function result(value: unknown) {
     return structuredResult(value);
 }
-function errorResult(error) {
+function errorResult(error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    return { content: [{ type: 'text', text: message }], isError: true };
+    return { content: [{ type: 'text' as const, text: message }], isError: true };
 }
-function wrap(handler) {
-    return async (args) => {
+function wrap<T>(handler: (args: T) => Promise<unknown> | unknown) {
+    return async (args: T) => {
         try {
             return result(await handler(args));
         }
@@ -116,7 +134,7 @@ function wrap(handler) {
         }
     };
 }
-export function registerDumpTools(server, session) {
+export function registerDumpTools(server: McpServer, session: GuardedDapSession): void {
     server.registerTool('debug_open_dump', {
         title: 'Open Native Crash Dump',
         description: 'Open a local native core/minidump with CodeLLDB, upstream LLVM lldb-dap, or GNU GDB DAP and capture bounded postmortem evidence. Use this when the failure is already recorded and no target process should execute; use debug_run_to_stop or debug_this_crash for a live reproduction instead. The tool starts only the selected local debugger adapter, never launches or resumes the crashed program, treats the dump as read-only, and returns the initial stack/locals/registers plus optional modules and disassembly.',
@@ -137,6 +155,6 @@ export function registerDumpTools(server, session) {
             includeModules: z.boolean().default(true).describe('Include loaded executable images and libraries recorded in the dump.'),
             moduleCount: z.number().int().positive().max(500).default(100).describe('Maximum number of modules to include when includeModules is true.'),
         }),
-    }, wrap(async (options) => openDump(session, options)));
+    }, wrap(async (options: DumpOpenArgs) => openDump(session, options)));
 }
 //# sourceMappingURL=register-dump-tools.js.map
