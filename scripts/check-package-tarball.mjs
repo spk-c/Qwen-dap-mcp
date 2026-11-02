@@ -36,8 +36,8 @@ try{
     const qwen=JSON.parse(readFileSync(join(pkg,'qwen-extension.json'),'utf8'));
     assert.equal(manifest.version,'0.19.0');
     assert.equal(qwen.version,manifest.version);
-    assert.equal(manifest.private,true);
-    assert.ok(manifest.name!=='@slp-dev1/qwen-dap-mcp','Must not masquerade as upstream npm package');
+    assert.equal(manifest.private,false);
+    assert.equal(manifest.name,'@slp-dev1/qwen-dap-mcp');
     assert.equal(qwen.mcpServers['qwen-dap-mcp'].command,'node');
     assert.ok(qwen.mcpServers['qwen-dap-mcp'].args[0].includes('dist'));
     const version=execFileSync(process.execPath,[join(pkg,'dist','index.js'),'--version'],{
