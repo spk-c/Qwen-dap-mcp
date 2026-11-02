@@ -1,10 +1,10 @@
-# Qwen DAP MCP — Native Debugger for Qwen Code and AI Coding Agents
+# Qwen DAP MCP — Native Debugger MCP for Claude Code, Codex, Qwen and AI Coding Agents
 
-**Debug native C/C++ crashes, hangs, deadlocks, Windows minidumps and core dumps with Qwen Code or another MCP-compatible coding agent.** Connect a real GDB, LLDB or CodeLLDB debugger through the Debug Adapter Protocol (DAP) and Model Context Protocol (MCP).
+**Debug native C/C++ crashes, hangs, deadlocks, Windows minidumps and core dumps with Claude Code, OpenAI Codex CLI, Qwen Code, Gemini CLI and other local MCP-compatible coding agents.** Connect a real GDB, LLDB or CodeLLDB debugger through the Debug Adapter Protocol (DAP) and Model Context Protocol (MCP).
 
 `qwen-dap-mcp` is a local **Debug Adapter Protocol (DAP) → Model Context Protocol (MCP)** bridge for native crash debugging, hang/deadlock triage, crash dumps, differential runtime analysis, remote targets, and bounded fix/verify workflows.
 
-Built for **Qwen Code**, usable from any stdio MCP client, and designed to expose debugger evidence without turning MCP into a general-purpose shell.
+Originally designed for **Qwen Code**, but usable from other **local stdio MCP clients** including Claude Code and Codex CLI. The AI model may run in the cloud; the debugger bridge and target binary still run where the MCP process is started.
 
 [![npm version](https://img.shields.io/npm/v/%40slp-dev1%2Fqwen-dap-mcp.svg)](https://www.npmjs.com/package/@slp-dev1/qwen-dap-mcp)
 [![CI](https://github.com/spk-c/Qwen-dap-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/spk-c/Qwen-dap-mcp/actions/workflows/ci.yml)
@@ -48,6 +48,32 @@ In Qwen Code, run `/mcp` and `/skills` to check that the `qwen-dap-mcp` server a
 
 **Prerequisites:** Node.js **20+**, and a supported native DAP debugger installed separately (CodeLLDB, LLVM `lldb-dap`, or GNU GDB DAP). This package is a bridge, **not** a bundled debugger. See [platform setup](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/README.md).
 
+### Claude Code
+
+Use a **local** Claude Code CLI with Node.js 20+ and an installed native DAP debugger:
+
+```bash
+claude mcp add --transport stdio --scope user qwen-dap-mcp -- npx -y @slp-dev1/qwen-dap-mcp
+claude mcp list
+```
+
+See [Claude Code native debugging guide](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/clients/claude-code.md) for a setup check, test prompt, Windows notes and safety boundaries.
+
+### OpenAI Codex CLI
+
+```bash
+codex mcp add qwen-dap-mcp -- npx -y @slp-dev1/qwen-dap-mcp
+codex mcp list
+```
+
+See [Codex CLI + IDE debugging guide](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/clients/codex.md) and [versioned Codex TOML configuration](https://github.com/spk-c/Qwen-dap-mcp/blob/main/examples/clients/codex.config.toml).
+
+### Gemini CLI, Cursor, VS Code Copilot and other clients
+
+Use a local **stdio** MCP entry pointing to `npx -y @slp-dev1/qwen-dap-mcp`. These clients have **different configuration schemas**: Gemini CLI and Cursor use `mcpServers`, while VS Code's `.vscode/mcp.json` uses `servers`. See [multi-client setup and compatibility matrix](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/clients/other-clients.md) and the [tested configuration examples](https://github.com/spk-c/Qwen-dap-mcp/tree/main/examples/clients).
+
+**Cloud execution boundary:** Claude Code or Codex CLI may call a cloud AI model while the CLI and debugger remain on your desktop. A browser-only Claude.ai/ChatGPT session or a remote Codex task **cannot automatically access your PC's local stdio MCP server or Windows processes**. Remote debugging requires separately authorized local execution or a protected connection; never expose a raw debugger port to the public internet.
+
 ### Other stdio MCP clients
 
 Run the published package with `npx`:
@@ -75,6 +101,20 @@ When started without `--help` or `--version`, the CLI operates as a local stdio 
 ### Update an existing installation
 
 Update the npm-backed Qwen extension using the extension manager in your installed Qwen Code version, or reinstall the package with the command above. For `npx`, restart the MCP client to use newly resolved versions. npm releases are immutable: README changes appear on npmjs.com **only after publishing a new package version**, not when GitHub's README changes.
+
+## MCP client compatibility
+
+| Client | Local MCP setup | Verification |
+| --- | --- | --- |
+| Qwen Code | Qwen extension | `/mcp` and `/skills` |
+| Claude Code | Local stdio `claude mcp add` | `claude mcp list` and `/mcp` |
+| OpenAI Codex CLI | Local stdio `codex mcp add` | `codex mcp list` and `/mcp` |
+| Gemini CLI | `settings.json` `mcpServers` | `gemini mcp list` |
+| Cursor | Desktop MCP settings | Connected tools in Cursor |
+| GitHub Copilot in VS Code | `.vscode/mcp.json` `servers` | MCP tools in Agent mode |
+| Browser-only / cloud task | Not direct local stdio | Requires independent secure execution path |
+
+The project includes **automatic protocol-level stdio initialize + tools/list smoke tests** with Claude Code, Codex CLI and Gemini client identities. These prove the shared MCP server protocol and example configuration consistency, not full end-to-end verification inside proprietary client applications. Native debugger E2E checks run separately. Run `npm run test:clients` from a built checkout.
 
 ## 30-second example
 
