@@ -1,6 +1,6 @@
 # qwen-dap-mcp
 
-> **Fork of the Apache-2.0 project originally by SLP-DEV1.** This GitHub fork compiles 51 maintained TypeScript runtime modules and retains generated JavaScript compatibility mirrors, plus debugger security fixes. The npm package `@slp-dev1/qwen-dap-mcp` belongs to the upstream project; installing it does **not** install this fork's changes. For this fork use `qwen extensions install spk-c/Qwen-dap-mcp`. See [Fork maintenance notes](README-FORK-CHANGES.md) and [TypeScript migration status](docs/typescript-migration.md).
+> **Maintained Apache-2.0 fork of the original project by SLP-DEV1.** The source of truth for this maintained edition is [spk-c/Qwen-dap-mcp](https://github.com/spk-c/Qwen-dap-mcp). The npm package is [`@slp-dev1/qwen-dap-mcp`](https://www.npmjs.com/package/@slp-dev1/qwen-dap-mcp); the registry always serves the latest **published** version, while `main` may contain newer, unreleased changes. See [fork notes](https://github.com/spk-c/Qwen-dap-mcp/blob/main/README-FORK-CHANGES.md) and [TypeScript migration status](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/typescript-migration.md).
 
 **Give coding agents a real native debugger.**
 
@@ -8,12 +8,13 @@
 
 Built for **Qwen Code**, usable from any stdio MCP client, and designed to expose debugger evidence without turning MCP into a general-purpose shell.
 
+[![npm version](https://img.shields.io/npm/v/%40slp-dev1%2Fqwen-dap-mcp.svg)](https://www.npmjs.com/package/@slp-dev1/qwen-dap-mcp)
 [![CI](https://github.com/spk-c/Qwen-dap-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/spk-c/Qwen-dap-mcp/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Node](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](package.json)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://github.com/spk-c/Qwen-dap-mcp/blob/main/LICENSE)
+[![Node](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](https://github.com/spk-c/Qwen-dap-mcp/blob/main/package.json)
 [![GitHub stars](https://img.shields.io/github/stars/spk-c/Qwen-dap-mcp?style=social)](https://github.com/spk-c/Qwen-dap-mcp/stargazers)
 
-**[Quick start](#quick-start) · [Capabilities](#what-it-does) · [Debugger support](#debugger-support) · [Safety](#safety-by-design) · [Docs](docs/README.md) · [Contributing](CONTRIBUTING.md)**
+**[Quick start](#quick-start) · [Capabilities](#what-it-does) · [Debugger support](#debugger-support) · [Safety](#safety-by-design) · [Docs](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/README.md) · [Contributing](https://github.com/spk-c/Qwen-dap-mcp/blob/main/CONTRIBUTING.md)**
 
 ## Why this exists
 
@@ -31,32 +32,32 @@ Coding agents can read source and propose patches, but native failures often can
 
 ### Qwen Code
 
-Install directly from GitHub:
-
-```bash
-qwen extensions install spk-c/Qwen-dap-mcp
-```
-
-For the separate upstream npm release (not this fork):
+Install the current **published** npm version:
 
 ```bash
 qwen extensions install @slp-dev1/qwen-dap-mcp
 ```
 
-Then verify the extension:
+Or install the newest code directly from the maintained GitHub repository (this can be ahead of npm):
 
-```text
-/mcp
-/skills
+```bash
+qwen extensions install spk-c/Qwen-dap-mcp
 ```
 
-You should see the `qwen-dap-mcp` server and the bundled `native-runtime-debug` skill.
+In Qwen Code, run `/mcp` and `/skills` to check that the `qwen-dap-mcp` server and the `native-runtime-debug` skill were discovered.
 
-### Any stdio MCP client
+**Prerequisites:** Node.js **20+**, and a supported native DAP debugger installed separately (CodeLLDB, LLVM `lldb-dap`, or GNU GDB DAP). This package is a bridge, **not** a bundled debugger. See [platform setup](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/README.md).
 
-For this fork, clone the repository and use `node /absolute/path/to/Qwen-dap-mcp/dist/index.js`. The following npm-based example uses the separate upstream package.
+### Other stdio MCP clients
 
-Typical configuration:
+Run the published package with `npx`:
+
+```bash
+npx -y @slp-dev1/qwen-dap-mcp --help
+npx -y @slp-dev1/qwen-dap-mcp --version
+```
+
+Configure a trusted local MCP client with:
 
 ```json
 {
@@ -69,12 +70,11 @@ Typical configuration:
 }
 ```
 
-CLI discovery is available without starting the stdio server:
+When started without `--help` or `--version`, the CLI operates as a local stdio MCP server. Client configuration syntax may vary.
 
-```bash
-qwen-dap-mcp --help
-qwen-dap-mcp --version
-```
+### Update an existing installation
+
+Update the npm-backed Qwen extension using the extension manager in your installed Qwen Code version, or reinstall the package with the command above. For `npx`, restart the MCP client to use newly resolved versions. npm releases are immutable: README changes appear on npmjs.com **only after publishing a new package version**, not when GitHub's README changes.
 
 ## 30-second example
 
@@ -165,7 +165,7 @@ Set `QWEN_DAP_MCP_TOOLSET=forensics` when deeper investigation is needed. It kee
 | `debug_evidence_bundle` | JSON/Markdown/SARIF evidence handoff |
 | `debug_adapter_doctor` | Adapter capability, rr, and security-profile audit |
 
-Set `QWEN_DAP_MCP_TOOLSET=full` only when raw stacks/scopes/variables, manual breakpoints/watchpoints, evaluate, memory reads, stepping, or adapter-specific controls are intentionally required. See [docs/toolsets.md](docs/toolsets.md).
+Set `QWEN_DAP_MCP_TOOLSET=full` only when raw stacks/scopes/variables, manual breakpoints/watchpoints, evaluate, memory reads, stepping, or adapter-specific controls are intentionally required. See [docs/toolsets.md](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/toolsets.md).
 
 ## Debugger support
 
@@ -175,7 +175,7 @@ Set `QWEN_DAP_MCP_TOOLSET=full` only when raw stacks/scopes/variables, manual br
 | **LLVM `lldb-dap`** | Native launch/attach, core-file inspection, and `lldb-server gdbserver` remote attach |
 | **GNU GDB 14+ DAP** | Native launch/attach, core-file workflows, and hardened `gdbserver` remote attach |
 
-Adapter discovery, prerequisites, and platform-specific setup are documented in [docs/README.md](docs/README.md).
+Adapter discovery, prerequisites, and platform-specific setup are documented in [docs/README.md](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/README.md).
 
 ## More than raw DAP
 
@@ -204,40 +204,38 @@ A debugger can execute and mutate target state, so the bridge treats that power 
 - Autonomous workflow state is explicit rather than hidden inside a background loop.
 - Optional **HOL Guard 2.2+** integration can fail closed before protected adapter startup or executable/mutating DAP actions cross the debugger boundary.
 
-Read the full policy and threat model in [docs/hol-guard.md](docs/hol-guard.md) and [SECURITY.md](SECURITY.md).
+Read the full policy and threat model in [docs/hol-guard.md](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/hol-guard.md) and [SECURITY.md](https://github.com/spk-c/Qwen-dap-mcp/blob/main/SECURITY.md).
 
-## Repro labs and benchmark harness
+## Development and reproducible verification
 
-The repository includes deterministic native fixtures so behavior can be tested instead of demonstrated only with screenshots:
+The repository includes native crash, hang, postmortem, Windows minidump, and remote-debugger fixtures. On a development checkout:
 
 ```bash
-npm run demo:build -- null-pointer
-npm run demo:repro -- null-pointer
-
-npm run demo:hang:build -- deadlock
-npm run demo:hang:repro -- deadlock
+npm ci
+npm run check
+npm run check:pack
 ```
 
-[`benchmark/`](benchmark/) also contains a reproducible comparison harness for `source-only`, `dap-raw`, and `qwen-dap-mcp` workflows. It deliberately ships without invented performance numbers; publishable results should record the exact model, settings, commit, reproduction, raw outcome, and verification status.
+The checks include source/build integrity, MCP tests, document consistency, and inspection of the **actual npm tarball**. Native adapter end-to-end tests run in dedicated CI jobs and require their debugger/toolchain prerequisites. See the [integration tests](https://github.com/spk-c/Qwen-dap-mcp/tree/main/integration) and the [benchmark harness](https://github.com/spk-c/Qwen-dap-mcp/tree/main/benchmark); no performance claims are made without recorded, reproducible results.
 
 ## Documentation
 
-Start with the [documentation index](docs/README.md).
+Start with the [documentation index](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/README.md).
 
 | Topic | Guide |
 | --- | --- |
-| CodeLLDB on Windows | [docs/CODELLDB_WINDOWS.md](docs/CODELLDB_WINDOWS.md) |
-| LLVM `lldb-dap` | [docs/lldb-dap.md](docs/lldb-dap.md) |
-| GNU GDB DAP | [docs/gdb-dap.md](docs/gdb-dap.md) |
-| Remote debugging | [docs/remote-debugging.md](docs/remote-debugging.md) |
-| Hang/deadlock analysis | [docs/hang-debugging.md](docs/hang-debugging.md) |
-| Differential debugging | [docs/differential-debugging.md](docs/differential-debugging.md) |
-| Runtime debugging v2 | [docs/runtime-debugging-v2.md](docs/runtime-debugging-v2.md) |
-| Agent vs full toolsets | [docs/toolsets.md](docs/toolsets.md) |
-| HOL Guard integration | [docs/hol-guard.md](docs/hol-guard.md) |
-| Publishing / releases | [docs/publishing.md](docs/publishing.md) |
+| CodeLLDB on Windows | [docs/CODELLDB_WINDOWS.md](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/CODELLDB_WINDOWS.md) |
+| LLVM `lldb-dap` | [docs/lldb-dap.md](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/lldb-dap.md) |
+| GNU GDB DAP | [docs/gdb-dap.md](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/gdb-dap.md) |
+| Remote debugging | [docs/remote-debugging.md](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/remote-debugging.md) |
+| Hang/deadlock analysis | [docs/hang-debugging.md](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/hang-debugging.md) |
+| Differential debugging | [docs/differential-debugging.md](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/differential-debugging.md) |
+| Runtime debugging v2 | [docs/runtime-debugging-v2.md](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/runtime-debugging-v2.md) |
+| Agent vs full toolsets | [docs/toolsets.md](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/toolsets.md) |
+| HOL Guard integration | [docs/hol-guard.md](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/hol-guard.md) |
+| Publishing / releases | [docs/publishing.md](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/publishing.md) |
 
-## Development
+## Contributing and source build
 
 Requirements: **Node.js 20+**.
 
@@ -248,20 +246,18 @@ npm ci
 npm run check
 ```
 
-`npm run check` builds TypeScript, runs the test suite, and validates the self-contained Qwen extension package. CI additionally exercises native crash/hang fixtures, adapter-specific real smoke tests, package output, HOL Guard compatibility, and the container build.
+`src/**/*.ts` is the source of truth for 51 runtime modules; generated JavaScript mirrors and declarations are checked by CI. The **full** TypeScript `strict: true` migration remains in progress ([issue #24](https://github.com/spk-c/Qwen-dap-mcp/issues/24)); passing CI is not a claim of zero strict-mode diagnostics.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+See [CONTRIBUTING.md](https://github.com/spk-c/Qwen-dap-mcp/blob/main/CONTRIBUTING.md) before opening a pull request.
 
-## Distribution
+## Distribution and release status
 
-Published as:
+- **npm:** [`@slp-dev1/qwen-dap-mcp`](https://www.npmjs.com/package/@slp-dev1/qwen-dap-mcp) — installable published versions; verify the npm version before assuming a GitHub change is included.
+- **Maintained source and Qwen extension:** [`spk-c/Qwen-dap-mcp`](https://github.com/spk-c/Qwen-dap-mcp) — `qwen extensions install spk-c/Qwen-dap-mcp`.
+- **Release archives and changelog:** [GitHub Releases](https://github.com/spk-c/Qwen-dap-mcp/releases) and [CHANGELOG.md](https://github.com/spk-c/Qwen-dap-mcp/blob/main/CHANGELOG.md).
+- **Publishing:** Releases are manually triggered after required CI passes; npm Trusted Publishing uses GitHub Actions OIDC, without a long-lived npm publication token.
 
-- npm: `@slp-dev1/qwen-dap-mcp`
-- MCP Registry: `io.github.spk-c/Qwen-dap-mcp`
-- Qwen Code extension: `qwen extensions install spk-c/Qwen-dap-mcp`
-- GitHub Releases: self-contained extension archives
-
-Current release details are in [CHANGELOG.md](CHANGELOG.md) and [GitHub Releases](https://github.com/spk-c/Qwen-dap-mcp/releases).
+The npm listing is updated from the README **inside the published tarball**. The GitHub README and npm README can temporarily differ until the next release.
 
 ## Contributing
 
@@ -271,4 +267,4 @@ If this project saves you a debugging session, **consider starring the repositor
 
 ## License
 
-Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+Apache-2.0. See [LICENSE](https://github.com/spk-c/Qwen-dap-mcp/blob/main/LICENSE) and [NOTICE](https://github.com/spk-c/Qwen-dap-mcp/blob/main/NOTICE).
