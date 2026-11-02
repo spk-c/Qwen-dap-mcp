@@ -10,8 +10,8 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: '24'
       - name: Reproducible install and full package verification
@@ -33,13 +33,12 @@ jobs:
           elif xcrun --find lldb-dap >/dev/null 2>&1; then
             path=$(xcrun --find lldb-dap)
           else
-            echo "No LLDB DAP adapter installed on this runner; native E2E not claimed." >> "$GITHUB_STEP_SUMMARY"
-            exit 0
+            echo "::error::Required lldb-dap adapter is missing on macOS runner." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
           fi
           echo "path=$path" >> "$GITHUB_OUTPUT"
-      - name: Real LLDB-DAP smoke (experimental; does not gate release)
+      - name: Required real LLDB-DAP native E2E
         if: steps.adapter.outputs.path != ''
-        continue-on-error: true
         env:
           RUN_NATIVE_DEBUGGER_TESTS: '1'
           NATIVE_DAP_ADAPTER: 'lldb-dap'
