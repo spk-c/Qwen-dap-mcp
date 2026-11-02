@@ -1,4 +1,7 @@
 import * as z from 'zod/v4';
+import type { McpServer } from '@modelcontextprotocol/server';
+import type { DapSessionRegistry } from '../dap/session-registry.js';
+import type { RuntimeSnapshotOptions } from '../dap/session.js';
 import { compareRuntimeSnapshots } from '../diagnostics/runtime-diff.js';
 import { DapError } from '../dap/errors.js';
 import { runWithDapOperationContext } from '../dap/operation-context.js';
@@ -31,11 +34,18 @@ const snapshotSchema = z.object({
     moduleCount: z.number().int().positive().max(500).default(defaultSnapshotOptions.moduleCount),
     includeExceptionInfo: z.boolean().default(defaultSnapshotOptions.includeExceptionInfo).describe('Collect exception information from both stopped sessions when supported.'),
 }).describe('Bounded evidence capture settings applied independently to both sessions.');
-function errorResult(error) {
+type SnapshotSettings = z.output<typeof snapshotSchema>;
+type CompareArgs = {
+    baselineSessionId: string;
+    candidateSessionId: string;
+    timeoutMs: number;
+    snapshot: SnapshotSettings;
+};
+function errorResult(error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    return { content: [{ type: 'text', text: message }], isError: true };
+    return { content: [{ type: 'text' as const, text: message }], isError: true };
 }
-async function captureSessionSnapshot(sessions, sessionId, options) {
+async function captureSessionSnapshot(sessions: DapSessionRegistry, sessionId: string, options: RuntimeSnapshotOptions) {
     return sessions.runWithSession(sessionId, async () => {
         const session = sessions.get();
         const snapshot = await session.runtimeSnapshot(options);
@@ -46,7 +56,7 @@ async function captureSessionSnapshot(sessions, sessionId, options) {
         };
     });
 }
-export function registerDifferentialTools(server, sessions) {
+export function registerDifferentialTools(server: McpServer, sessions: DapSessionRegistry): void {
     server.registerTool('debug_compare_runs', {
         description: 'Compare bounded runtime evidence from two existing stopped DAP sessions. Use this for baseline or known-good versus candidate or failing differential debugging after both sessions have reached comparable stops. It compares stack identities, locals, registers, exception state, symbol health, and modules semantically; non-null raw address-only changes are marked unstable rather than causal evidence. Do not use it to launch, resume, or alter either target; prepare both runtime states with the normal lifecycle tools first.',
         inputSchema: z.object({
@@ -65,7 +75,7 @@ export function registerDifferentialTools(server, sessions) {
         }),
         outputSchema: debugCompareRunsOutputSchema,
         annotations: READ_ONLY_LOCAL_TOOL_ANNOTATIONS,
-    }, async ({ baselineSessionId, candidateSessionId, timeoutMs, snapshot }) => {
+    }, async ({ baselineSessionId, candidateSessionId, timeoutMs, snapshot }: CompareArgs) => {
         try {
             if (!sessions.has(baselineSessionId)) {
                 throw new DapError(`Unknown baseline DAP session '${baselineSessionId}'. Create it with debug_sessions first.`);
