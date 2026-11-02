@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 // Temporary migration ceiling, tightened whenever a checked-in batch reduces
 // full strict compiler diagnostics. Zero is the acceptance criterion for #24.
-const MAX_STRICT_DIAGNOSTICS = 273;
+const MAX_STRICT_DIAGNOSTICS = 246;
 const root = fileURLToPath(new URL('../', import.meta.url));
 const typescript = join(root, 'node_modules', 'typescript', 'bin', 'tsc');
 const result = spawnSync(process.execPath, [
