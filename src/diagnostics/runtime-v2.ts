@@ -391,7 +391,7 @@ export function buildFailureHypotheses(options: HypothesisOptions): FailureHypot
 }
 export function buildBreakpointPlan(hypotheses: FailureHypothesis[], snapshot: RuntimeSnapshot) {
     const functions = new Set<string>();
-    const reasons = [];
+    const reasons: Array<{ function: string; reason: string; hypothesis: string }> = [];
     const add = (name: string, reason: string, hypothesis: string) => {
         if (!functions.has(name)) {
             functions.add(name);

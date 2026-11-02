@@ -257,7 +257,7 @@ function buildPointerProvenance(evidence: HangThreadEvidence[]) {
             rationale,
         };
     }).sort((a, b) => {
-        const score = (group) => Number(group.synchronizationRelevant) * 4
+        const score = (group: { synchronizationRelevant: boolean; sharedAcrossThreads: boolean; observations: PointerObservation[] }) => Number(group.synchronizationRelevant) * 4
             + Number(group.sharedAcrossThreads) * 2
             + group.observations.length;
         return score(b) - score(a) || a.address.localeCompare(b.address);
