@@ -1,16 +1,20 @@
 import * as z from 'zod/v4';
+import type { McpServer } from '@modelcontextprotocol/server';
+import type { DapSessionRegistry } from '../dap/session-registry.js';
+type SessionToolConfig = { inputSchema?: z.ZodObject<z.ZodRawShape> };
+
 const sessionIdSchema = z
     .string()
     .min(1)
     .max(64)
     .regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/)
     .describe('Optional DAP session ID. Omit to use the backward-compatible default session.');
-function extendInputSchema(config) {
-    const inputSchema = config?.inputSchema;
+function extendInputSchema(config: unknown): unknown {
+    const inputSchema = (config as SessionToolConfig | null | undefined)?.inputSchema;
     if (!inputSchema || typeof inputSchema.extend !== 'function')
         return config;
     return {
-        ...config,
+        ...(config as SessionToolConfig),
         inputSchema: inputSchema.extend({ sessionId: sessionIdSchema.optional() }),
     };
 }
@@ -23,28 +27,28 @@ function extendInputSchema(config) {
  * debugger operation. debug_compare_runs is also excluded because it explicitly
  * owns two independent session IDs in one read-only comparison request.
  */
-export function routeSessionToolRegistrar(registrar, registry) {
+export function routeSessionToolRegistrar<T extends McpServer>(registrar: T, registry: DapSessionRegistry): T {
     return new Proxy(registrar, {
         get(target, property, receiver) {
             if (property === 'registerTool') {
-                return (name, ...args) => {
+                return (name: string, ...args: unknown[]) => {
                     if (!name.startsWith('debug_') || name === 'debug_sessions' || name === 'debug_compare_runs') {
-                        return target.registerTool.call(target, name, ...args);
+                        return (target.registerTool as (...parameters: unknown[]) => unknown).call(target, name, ...args);
                     }
                     const config = extendInputSchema(args[0]);
                     const handler = args[1];
                     if (typeof handler !== 'function') {
-                        return target.registerTool.call(target, name, config, ...args.slice(1));
+                        return (target.registerTool as (...parameters: unknown[]) => unknown).call(target, name, config, ...args.slice(1));
                     }
-                    const routedHandler = async (rawArgs, ...handlerRest) => {
+                    const routedHandler = async (rawArgs: unknown, ...handlerRest: unknown[]) => {
                         const input = rawArgs && typeof rawArgs === 'object' && !Array.isArray(rawArgs)
-                            ? rawArgs
+                            ? rawArgs as Record<string, unknown>
                             : {};
                         const requestedSessionId = typeof input.sessionId === 'string' ? input.sessionId : undefined;
                         const { sessionId: _sessionId, ...handlerArgs } = input;
                         return registry.runWithSession(requestedSessionId, () => handler(handlerArgs, ...handlerRest));
                     };
-                    return target.registerTool.call(target, name, config, routedHandler, ...args.slice(2));
+                    return (target.registerTool as (...parameters: unknown[]) => unknown).call(target, name, config, routedHandler, ...args.slice(2));
                 };
             }
             const value = Reflect.get(target, property, receiver);

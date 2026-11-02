@@ -349,7 +349,7 @@ export class DapSession {
     }
     async runtimeSnapshot(options: RuntimeSnapshotOptions = {}) {
         this.assertConfigured();
-        const threadList = await this.threads();
+        const threadList: DebugProtocol.Thread[] = await this.threads();
         if (threadList.length === 0)
             throw new DapError('The debugger returned no threads for debug_snapshot.');
         const stoppedBody = latestActiveStoppedBody(this.connection.recentEvents);
@@ -361,14 +361,14 @@ export class DapSession {
         const frame = stack[0];
         if (!frame)
             throw new DapError(`Thread ${thread.id} has no stack frame for debug_snapshot.`);
-        const frameScopes = await this.scopes(frame.id);
+        const frameScopes: DebugProtocol.Scope[] = await this.scopes(frame.id);
         const maxVariables = options.maxVariablesPerScope ?? 100;
         const collectionErrors = [];
         const localScopes = frameScopes
             .filter((scope) => /locals?|arguments?|parameters?/i.test(scope.name))
             .slice(0, 3);
         const registersScope = frameScopes.find((scope) => /register/i.test(scope.name));
-        const localVariables = [];
+        const localVariables: DebugProtocol.Variable[] = [];
         for (const scope of localScopes) {
             if (scope.variablesReference <= 0)
                 continue;
@@ -380,7 +380,7 @@ export class DapSession {
             }
         }
         const locals = dedupeVariables(localVariables).slice(0, maxVariables * Math.max(1, localScopes.length));
-        let registers = [];
+        let registers: DebugProtocol.Variable[] = [];
         if (registersScope && registersScope.variablesReference > 0) {
             try {
                 registers = dedupeVariables(await this.variables(registersScope.variablesReference, 0, maxVariables)).slice(0, maxVariables);

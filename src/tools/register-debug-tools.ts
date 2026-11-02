@@ -54,7 +54,7 @@ function errorResult(error: unknown) {
     return { content: [{ type: 'text' as const, text: message }], isError: true };
 }
 function wrap<T>(handler: (args: T) => Promise<unknown>) {
-    return async (args) => {
+    return async (args: T) => {
         try {
             return result(await handler(args));
         }
@@ -64,7 +64,7 @@ function wrap<T>(handler: (args: T) => Promise<unknown>) {
     };
 }
 function wrapStructured<T>(handler: (args: T) => Promise<unknown>) {
-    return async (args) => {
+    return async (args: T) => {
         try {
             return structuredResult(await handler(args));
         }

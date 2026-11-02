@@ -305,7 +305,7 @@ function terminalForVerification(outcome: TerminalOutcome) {
         ...(typeof body?.exitCode === 'number' ? { exitCode: body.exitCode } : {}),
     };
 }
-function workflowMetadata(stage, baseline, diagnosis, terminal, agentState, maxIterations) {
+function workflowMetadata(stage: z.output<typeof workflowSchema>['stage'], baseline: z.output<typeof verificationBaselineSchema> | undefined, diagnosis: Awaited<ReturnType<typeof diagnoseSnapshot>> | undefined, terminal: ReturnType<typeof terminalForVerification> | undefined, agentState: z.output<typeof autonomousAgentStateSchema> | undefined, maxIterations: number) {
     if (stage === 'verify' && !baseline) {
         throw new DapError('debug_this_crash workflow.stage="verify" requires the verificationBaseline returned by the original diagnosis.');
     }
