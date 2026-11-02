@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.19.2] - 2026-11-02
+
+### Discovery and documentation
+
+- Reworked README opening and use-case navigation for native crash, hang and postmortem MCP debugging.
+- Added focused C/C++ crash, Windows minidump and GDB/LLDB DAP setup tutorials.
+- Added `mcpName` and a versioned `server.json` for the maintained `io.github.spk-c/qwen-dap-mcp` MCP Registry namespace.
+- Prepared OIDC-backed release automation to publish npm metadata to the official MCP Registry after the npm artifact is available.
+- Included updated package and extension discovery descriptions; no runtime debugger behavior changes in this release.
+
+
 ## Unreleased — development tooling updates
 
 - Completed full strict TypeScript migration of all 51 runtime modules (PRs #52–#56; zero strict diagnostics); restored precise documentation after earlier release notes described the in-progress migration.
