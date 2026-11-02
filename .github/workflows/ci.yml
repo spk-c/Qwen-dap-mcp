@@ -24,6 +24,24 @@ jobs:
       - name: Verify committed build is synchronized
         run: git diff --exit-code -- dist src
 
+
+  client-compatibility:
+    name: MCP client examples and stdio handshake (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run build
+      - run: npm run test:clients
+
+
   coverage:
     runs-on: ubuntu-latest
     steps:
