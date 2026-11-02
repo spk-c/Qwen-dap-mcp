@@ -1,4 +1,6 @@
 import * as z from 'zod/v4';
+import type { McpServer } from '@modelcontextprotocol/server';
+import type { GuardedDapSession } from '../dap/guarded-session.js';
 import { buildGdbDapLaunchConfiguration, buildGdbDapPidAttachConfiguration, buildGdbDapRemoteAttachConfiguration, discoverGdbDap, resolveGdbDapRemoteEndpoint, } from '../adapters/gdb-dap.js';
 import { REMOTE_DEBUG_HOSTS_ENV } from '../remote-endpoint.js';
 import { LOCAL_TARGET_EXECUTION_ANNOTATIONS, READ_ONLY_LOCAL_TOOL_ANNOTATIONS } from './tool-annotations.js';
@@ -6,14 +8,34 @@ const breakpointGroupSchema = z.object({
     source: z.string().min(1).describe('Absolute or GDB-resolvable source file path.'),
     lines: z.array(z.number().int().positive()).min(1).describe('One or more 1-based source lines to set before configurationDone.'),
 });
-function result(value) {
-    return { content: [{ type: 'text', text: JSON.stringify(value, null, 2) }] };
+type BreakpointGroup = z.output<typeof breakpointGroupSchema>;
+type DiscoveryArgs = { adapterPath?: string };
+type StartArgs = DiscoveryArgs & { cwd?: string; requestTimeoutMs: number };
+type LaunchArgs = {
+    program: string;
+    args?: string[];
+    cwd?: string;
+    env?: Record<string, string>;
+    stopOnEntry: boolean;
+    stopAtBeginningOfMainSubprogram: boolean;
+    breakpoints?: BreakpointGroup[];
+};
+type AttachArgs = { pid: number; program?: string; breakpoints?: BreakpointGroup[] };
+type RemoteAttachArgs = {
+    host?: string;
+    port?: number;
+    target?: string;
+    program?: string;
+    breakpoints?: BreakpointGroup[];
+};
+function result(value: unknown) {
+    return { content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }] };
 }
-function errorResult(error) {
-    return { content: [{ type: 'text', text: error instanceof Error ? error.message : String(error) }], isError: true };
+function errorResult(error: unknown) {
+    return { content: [{ type: 'text' as const, text: error instanceof Error ? error.message : String(error) }], isError: true };
 }
-function wrap(handler) {
-    return async (args) => {
+function wrap<T>(handler: (args: T) => Promise<unknown> | unknown) {
+    return async (args: T) => {
         try {
             return result(await handler(args));
         }
@@ -22,7 +44,7 @@ function wrap(handler) {
         }
     };
 }
-export function registerGdbDapTools(server, session) {
+export function registerGdbDapTools(server: McpServer, session: GuardedDapSession): void {
     server.registerTool('debug_gdb_info', {
         title: 'Locate GDB DAP',
         description: 'Locate and version-check a local GDB executable with the built-in DAP interpreter. Use this to verify GDB >= 14 discovery before starting a GNU debugger session; it only probes the local executable and does not launch or attach a debuggee.',
@@ -30,7 +52,7 @@ export function registerGdbDapTools(server, session) {
         inputSchema: z.object({
             adapterPath: z.string().min(1).optional().describe('Optional explicit path to the GDB executable; omit to search GDB_DAP_PATH, GDB_PATH, GDB_HOME, and PATH.'),
         }),
-    }, wrap(async ({ adapterPath }) => discoverGdbDap({ ...(adapterPath ? { explicitPath: adapterPath } : {}) })));
+    }, wrap(async ({ adapterPath }: DiscoveryArgs) => discoverGdbDap({ ...(adapterPath ? { explicitPath: adapterPath } : {}) })));
     server.registerTool('debug_start_gdb', {
         title: 'Start GDB DAP',
         description: 'Discover GDB >= 14 and initialize its built-in Debug Adapter Protocol interpreter over stdio. Use this before the manual GDB launch/attach helpers in the full toolset; it starts only GDB itself and does not yet run or attach a target.',
@@ -40,7 +62,7 @@ export function registerGdbDapTools(server, session) {
             cwd: z.string().optional().describe('Working directory for the local GDB adapter process.'),
             requestTimeoutMs: z.number().int().min(1000).max(120000).default(30000).describe('Per-request DAP timeout in milliseconds.'),
         }),
-    }, wrap(async ({ adapterPath, cwd, requestTimeoutMs }) => {
+    }, wrap(async ({ adapterPath, cwd, requestTimeoutMs }: StartArgs) => {
         const adapter = discoverGdbDap({ ...(adapterPath ? { explicitPath: adapterPath } : {}) });
         const capabilities = await session.start({
             command: adapter.command,
@@ -64,7 +86,7 @@ export function registerGdbDapTools(server, session) {
             stopAtBeginningOfMainSubprogram: z.boolean().default(false).describe('Stop at the main subprogram using GDB start semantics.'),
             breakpoints: z.array(breakpointGroupSchema).optional().describe('Optional source breakpoints configured before the inferior runs.'),
         }),
-    }, wrap(async ({ program, args, cwd, env, stopOnEntry, stopAtBeginningOfMainSubprogram, breakpoints }) => session.launch(buildGdbDapLaunchConfiguration({
+    }, wrap(async ({ program, args, cwd, env, stopOnEntry, stopAtBeginningOfMainSubprogram, breakpoints }: LaunchArgs) => session.launch(buildGdbDapLaunchConfiguration({
         program: program,
         ...(args ? { args: args } : {}),
         ...(cwd ? { cwd: cwd } : {}),
@@ -81,7 +103,7 @@ export function registerGdbDapTools(server, session) {
             program: z.string().min(1).optional().describe('Optional matching executable image used for symbols when GDB cannot infer it.'),
             breakpoints: z.array(breakpointGroupSchema).optional().describe('Optional source breakpoints configured before attach setup completes.'),
         }),
-    }, wrap(async ({ pid, program, breakpoints }) => session.attach(buildGdbDapPidAttachConfiguration({ pid: pid, ...(program ? { program: program } : {}) }), (breakpoints ?? []))));
+    }, wrap(async ({ pid, program, breakpoints }: AttachArgs) => session.attach(buildGdbDapPidAttachConfiguration({ pid: pid, ...(program ? { program: program } : {}) }), (breakpoints ?? []))));
     server.registerTool('debug_attach_gdb_remote', {
         title: 'Attach GDB to gdbserver',
         description: `Use this to connect an initialized GDB DAP session to an explicitly authorized gdbserver TCP endpoint. Loopback hosts are allowed by default; non-loopback hosts must be listed exactly in ${REMOTE_DEBUG_HOSTS_ENV}. Do not use this as a generic GDB target-string escape hatch: serial devices, arbitrary target syntax, and unapproved network hosts are rejected, and this tool never starts gdbserver itself.`,
@@ -93,7 +115,7 @@ export function registerGdbDapTools(server, session) {
             program: z.string().min(1).optional().describe('Optional local unstripped executable used for matching symbols; it must match the remote target binary.'),
             breakpoints: z.array(breakpointGroupSchema).optional().describe('Optional source breakpoints configured after connecting to the authorized endpoint.'),
         }),
-    }, wrap(async ({ host, port, target, program, breakpoints }) => {
+    }, wrap(async ({ host, port, target, program, breakpoints }: RemoteAttachArgs) => {
         const remoteOptions = {
             ...(host ? { host: host } : {}),
             ...(port === undefined ? {} : { port: port }),
