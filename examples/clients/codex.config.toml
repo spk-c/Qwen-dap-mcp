@@ -1,0 +1,6 @@
+# Merge this table into ~/.codex/config.toml.
+# Works in the Codex CLI and supported Codex IDE integrations.
+[mcp_servers.qwen-dap-mcp]
+command = "npx"
+args = ["-y", "@slp-dev1/qwen-dap-mcp"]
+startup_timeout_sec = 30
