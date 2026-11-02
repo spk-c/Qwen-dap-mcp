@@ -49,3 +49,7 @@ The native debugger bridge is compatible with local **stdio MCP** clients and is
 - [Client-specific example configurations](https://github.com/spk-c/Qwen-dap-mcp/tree/main/examples/clients)
 
 Run `npm run test:clients` to validate sample configurations and perform real stdio MCP initialize/tool-discovery smoke tests with multiple client identities (not proprietary client binaries). For native debugger coverage, review dedicated adapter E2E workflows.
+
+## Real CLI configuration checks
+
+The Real CLI MCP registration GitHub Actions workflow installs pinned official Claude Code and Codex executables and verifies that each can register and list the local MCP server in isolated temporary configuration directories without user credentials. The existing cross-client initialize/tools-list tests verify the live stdio protocol, and native debugger E2E tests check GDB/LLDB execution. This does not prove a model-driven tool call in an authenticated Claude/Codex session; that remains a separately authorized manual E2E check.

@@ -21,10 +21,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
@@ -61,7 +61,7 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$GITHUB_SHA&per_page=100" > /tmp/qwen-dap-ci.json
           for workflow in \
             "CI" "Native debugger end-to-end" "Native postmortem E2E" \
-            "Loopback GDB remote E2E" "Windows CodeLLDB minidump E2E" "CodeQL"; do
+            "Loopback GDB remote E2E" "Windows CodeLLDB minidump E2E" "CodeQL" "macOS native compatibility (experimental)" "Real CLI MCP registration"; do
             conclusion=$(jq -r --arg name "$workflow" '[.workflow_runs[] | select(.name == $name) | .conclusion] | .[0] // "missing"' /tmp/qwen-dap-ci.json)
             printf '%s: %s\n' "$workflow" "$conclusion"
             test "$conclusion" = success || { echo "Missing successful required workflow: $workflow"; exit 1; }
@@ -86,8 +86,9 @@ jobs:
         run: |
           set -euo pipefail
           curl --fail --location --retry 3 \
-            'https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz' \
+            'https://github.com/modelcontextprotocol/registry/releases/download/v1.8.7/mcp-publisher_linux_amd64.tar.gz' \
             --output /tmp/mcp-publisher.tar.gz
+          echo '00b21004149a4ce66f0782508ae4a2bce67d1bea395a8da0bd8028159fb59579  /tmp/mcp-publisher.tar.gz' | sha256sum --check
           mkdir -p /tmp/mcp-publisher-cli
           tar -xzf /tmp/mcp-publisher.tar.gz -C /tmp/mcp-publisher-cli mcp-publisher
           echo '/tmp/mcp-publisher-cli' >> "$GITHUB_PATH"

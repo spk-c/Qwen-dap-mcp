@@ -5,7 +5,7 @@ The maintained source repository is [spk-c/Qwen-dap-mcp](https://github.com/spk-
 ## Releasing a new version
 
 1. Prepare and review a version bump in `package.json`, `package-lock.json` (top-level and root package) and `qwen-extension.json`. Add changelog notes.
-2. Merge to `main`, then verify **all six** workflows passed on that exact commit: CI, CodeQL, Native debugger end-to-end, Native postmortem E2E, Loopback GDB remote E2E and Windows CodeLLDB minidump E2E.
+2. Merge to `main`, then verify **all eight** workflows passed on that exact commit: CI, CodeQL, Native debugger end-to-end, Native postmortem E2E, Loopback GDB remote E2E, Windows CodeLLDB minidump E2E, macOS native compatibility (real LLDB-DAP E2E) and Real CLI MCP registration.
 3. For tag-driven release, push an annotated tag `vX.Y.Z` at the verified `main` commit. The workflow runs automatically on `v*` tags.
 4. Alternatively run **Actions → Publish verified npm and GitHub release → Run workflow** on `main`; leave the optional version input empty or match `package.json`.
 
@@ -43,3 +43,7 @@ If MCP Registry publishing fails, do **not** forge a successful listing. The wor
 npm Trusted Publishing normally generates package provenance automatically (no explicit `--provenance` flag is needed). An npm publish attempt may occasionally fail with `TLOG_CREATE_ENTRY_ERROR` / HTTP 409 when an equivalent transparency-log entry already exists, even though the package itself has not been published.
 
 The release workflow only handles this **specific** error: it first checks whether npm already accepted the **identical SHA-512 tarball**. If not, it retries publishing that same tarball with `--provenance=false`, preserving npm OIDC Trusted Publishing but omitting the optional public provenance attestation for that exception. The workflow displays a warning and notes the exception in the GitHub Actions summary. All other npm errors still fail the workflow. Maintainers should inspect the npm version's provenance status after release.
+
+## Release supply-chain hardening
+
+GitHub Actions use pinned full commit SHAs. The MCP Registry publisher archive is pinned to v1.8.7 and checked against the release SHA-256 digest before extraction. Release publication requires the macOS LLDB-DAP test to pass as well as Linux/Windows native debugger checks. The original npm package version is not changed by these CI-only improvements; use a new version for a future release.
