@@ -1,7 +1,7 @@
 {
   "name": "@slp-dev1/qwen-dap-mcp",
   "version": "0.19.2",
-  "description": "Native crash and hang debugging for Qwen Code and MCP coding agents via DAP, GDB, LLDB, CodeLLDB and Windows minidumps.",
+  "description": "Native C/C++ crash, hang and minidump debugging for Claude Code, Codex, Qwen and other MCP coding agents via DAP, GDB, LLDB and CodeLLDB.",
   "type": "module",
   "main": "./dist/index.js",
   "bin": {
@@ -30,7 +30,8 @@
     "check:types": "node scripts/check-type-coverage.mjs",
     "check:strict-budget": "node scripts/check-strict-budget.mjs",
     "test:coverage": "node --experimental-test-coverage --test --test-coverage-lines=30 --test-coverage-functions=30 --test-coverage-branches=65",
-    "bench:transport": "node benchmark/dap-transport.mjs"
+    "bench:transport": "node benchmark/dap-transport.mjs",
+    "test:clients": "node --test test/mcp-client-compat.test.mjs"
   },
   "engines": {
     "node": ">=20"
@@ -70,7 +71,13 @@
     "sarif",
     "mcp-server",
     "c++-debugging",
-    "windows-minidump"
+    "windows-minidump",
+    "claude-code",
+    "openai-codex",
+    "codex-cli",
+    "gemini-cli",
+    "cursor",
+    "github-copilot"
   ],
   "license": "Apache-2.0",
   "repository": {
