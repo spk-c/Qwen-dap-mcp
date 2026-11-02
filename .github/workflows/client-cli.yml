@@ -19,7 +19,7 @@ jobs:
           npm ci --ignore-scripts --no-audit --no-fund
           npm run check
       - name: Install pinned official Claude Code and Codex CLIs
-        run: npm install --global --no-audit --no-fund @anthropic-ai/claude-code@2.1.316 @openai/codex@0.166.0
+        run: npm install --global --allow-scripts=@anthropic-ai/claude-code --no-audit --no-fund @anthropic-ai/claude-code@2.1.316 @openai/codex@0.166.0
       - name: Register and inspect MCP in real CLI executables without account credentials
         shell: bash
         env:
@@ -40,8 +40,9 @@ jobs:
           # Claude's list command also attempts a real local stdio connection.
           claude mcp list | tee /tmp/claude-mcp-list.txt
           grep -F 'qwen-dap-mcp' /tmp/claude-mcp-list.txt
+          grep -F 'Connected' /tmp/claude-mcp-list.txt
           codex mcp add qwen-dap-mcp -- node "$server"
-          codex mcp get qwen-dap-mcp --json | node -e 'let b="";process.stdin.on("data",c=>b+=c).on("end",()=>{const x=JSON.parse(b); if(x.transport?.stdio?.command!=="node" && x.command!=="node")process.exit(1);})'
+          codex mcp get qwen-dap-mcp --json | node -e 'let b="";process.stdin.on("data",c=>b+=c).on("end",()=>{const x=JSON.parse(b); const v=JSON.stringify(x);if(!v.includes('\"command\":\"node\"') || !v.includes('dist/index.js'))process.exit(1);})'
           codex mcp list --json | node -e 'let b="";process.stdin.on("data",c=>b+=c).on("end",()=>{const x=JSON.parse(b); if(!JSON.stringify(x).includes("qwen-dap-mcp"))process.exit(1);})'
       - name: Verify cross-client MCP protocol handshake separately
         run: npm run test:clients
