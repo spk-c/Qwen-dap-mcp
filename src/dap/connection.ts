@@ -435,7 +435,7 @@ export class DapConnection extends EventEmitter {
             }
         }
     }
-    handleMessage(message) {
+    handleMessage(message: (DebugProtocol.Response & { type: 'response' }) | (DebugProtocol.Event & { type: 'event' }) | (DebugProtocol.Request & { type: 'request' })) {
         if (message === null || typeof message !== 'object' || Array.isArray(message)
             || !['response', 'event', 'request'].includes(message.type)) {
             throw new DapError('Invalid DAP message envelope: expected a response, event, or reverse request object.');

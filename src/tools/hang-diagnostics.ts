@@ -612,11 +612,11 @@ export function registerHangDiagnosticTool(server: McpServer, session: GuardedDa
                         });
                         const requestConfiguration = request === 'attach'
                             ? buildGdbDapPidAttachConfiguration({
-                                pid: pid,
+                                pid: pid!,
                                 ...(program ? { program } : {}),
                             })
                             : buildGdbDapLaunchConfiguration({
-                                program: program,
+                                program: program!,
                                 ...(args ? { args } : {}),
                                 ...(cwd ? { cwd } : {}),
                                 ...(env ? { env } : {}),
@@ -643,12 +643,12 @@ export function registerHangDiagnosticTool(server: McpServer, session: GuardedDa
                         });
                         const requestConfiguration = request === 'attach'
                             ? buildLldbDapAttachConfiguration({
-                                pid: pid,
+                                pid: pid!,
                                 ...(program ? { program } : {}),
                                 stopOnEntry: false,
                             })
                             : buildLldbDapLaunchConfiguration({
-                                program: program,
+                                program: program!,
                                 ...(args ? { args } : {}),
                                 ...(cwd ? { cwd } : {}),
                                 ...(env ? { env } : {}),
@@ -673,12 +673,12 @@ export function registerHangDiagnosticTool(server: McpServer, session: GuardedDa
                     });
                     const requestConfiguration = request === 'attach'
                         ? buildCodeLldbAttachConfiguration({
-                            pid: pid,
+                            pid: pid!,
                             ...(program ? { program } : {}),
                             stopOnEntry: false,
                         })
                         : buildCodeLldbLaunchConfiguration({
-                            program: program,
+                            program: program!,
                             ...(args ? { args } : {}),
                             ...(cwd ? { cwd } : {}),
                             ...(env ? { env } : {}),

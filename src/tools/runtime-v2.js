@@ -547,7 +547,7 @@ export function registerRuntimeV2Tools(server, session) {
             const size = pointerSize(snapshot);
             const vtable = raw.length >= size ? (size === 8 ? raw.readBigUInt64LE(0) : BigInt(raw.readUInt32LE(0))) : undefined;
             const vtableRef = vtable === undefined ? undefined : '0x' + vtable.toString(16);
-            const module = moduleForAddress(snapshot.modules, vtableRef);
+            const module = vtableRef ? moduleForAddress(snapshot.modules, vtableRef) : undefined;
             return structuredResult({
                 pointer: pointerText,
                 observed,
