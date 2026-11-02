@@ -1,11 +1,11 @@
-name: Publish verified GitHub release
+name: Publish verified npm and GitHub release
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version (this workflow is scoped to 0.19.0)'
+        description: 'Release version (this workflow is scoped to 0.19.1)'
         required: true
-        default: '0.19.0'
+        default: '0.19.1'
         type: string
 permissions:
   contents: write
@@ -24,15 +24,17 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
       - name: Validate release is explicitly triggered from main
         env:
           VERSION: ${{ inputs.version }}
         shell: bash
         run: |
           test "$GITHUB_REF" = "refs/heads/main" || { echo 'Run this workflow from main only.'; exit 1; }
-          test "$VERSION" = "0.19.0" || { echo 'This release workflow is restricted to 0.19.0.'; exit 1; }
-          node -e "const p=require('./package.json');const q=require('./qwen-extension.json');if(p.version!=='0.19.0'||q.version!==p.version||p.private!==false||p.name!=='@slp-dev1/qwen-dap-mcp')process.exit(1)"
+          test "$VERSION" = "0.19.1" || { echo 'This release workflow is restricted to 0.19.1.'; exit 1; }
+          node -e "const p=require('./package.json');const q=require('./qwen-extension.json');if(p.version!=='0.19.1'||q.version!==p.version||p.private!==false||p.name!=='@slp-dev1/qwen-dap-mcp')process.exit(1)"
       - name: Require successful CI, native debuggers, postmortem, remote and CodeQL
         env:
           GH_TOKEN: ${{ github.token }}
@@ -60,14 +62,14 @@ jobs:
           cd release-assets
           sha256sum ./*.tgz > SHA256SUMS
       - name: Install npm with OIDC trusted publishing support
-        run: npm install --global npm@11
+        run: npm install --global npm@^11
       - name: Publish verified package to npm via OIDC
         shell: bash
         run: |
           test "$(node -p 'require("./package.json").name')" = '@slp-dev1/qwen-dap-mcp'
-          test "$(node -p 'require("./package.json").version')" = '0.19.0'
-          if npm view '@slp-dev1/qwen-dap-mcp@0.19.0' version >/dev/null 2>&1; then
-            echo 'npm version 0.19.0 already exists; refusing to overwrite.'
+          test "$(node -p 'require("./package.json").version')" = '0.19.1'
+          if npm view '@slp-dev1/qwen-dap-mcp@0.19.1' version >/dev/null 2>&1; then
+            echo 'npm version 0.19.1 already exists; refusing to overwrite.'
             exit 1
           fi
           npm publish --access public --ignore-scripts
@@ -76,7 +78,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          tag=v0.19.0
+          tag=v0.19.1
           if gh release view "$tag" >/dev/null 2>&1; then
             echo "Release $tag already exists; refusing to overwrite."
             exit 1
@@ -88,9 +90,9 @@ jobs:
           else
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git tag -a "$tag" "$GITHUB_SHA" -m "Qwen DAP MCP 0.19.0"
+            git tag -a "$tag" "$GITHUB_SHA" -m "Qwen DAP MCP 0.19.1"
             git push origin "refs/tags/$tag"
           fi
           gh release create "$tag" release-assets/*.tgz release-assets/SHA256SUMS \
-            --verify-tag --title "Qwen DAP MCP 0.19.0" \
-            --notes-file RELEASE-0.19.0.md --latest
+            --verify-tag --title "Qwen DAP MCP 0.19.1" \
+            --notes-file RELEASE-0.19.1.md --latest

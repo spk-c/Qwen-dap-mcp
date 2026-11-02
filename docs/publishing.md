@@ -1,23 +1,28 @@
 # Publishing and versioning
 
-The npm name `@slp-dev1/qwen-dap-mcp` belongs to the original project; **never publish this fork into that namespace**. The GitHub installation path is `spk-c/Qwen-dap-mcp`. The fork package is intentionally marked `private: true`; the 0.19.0 release is a **GitHub Release**, not an npm registry publication.
+The maintained source repository is [spk-c/Qwen-dap-mcp](https://github.com/spk-c/Qwen-dap-mcp). The npm package is [`@slp-dev1/qwen-dap-mcp`](https://www.npmjs.com/package/@slp-dev1/qwen-dap-mcp), published through GitHub Actions **npm Trusted Publishing** with OIDC (no long-lived npm write token). SLP-DEV1 remains credited as the original project author under Apache-2.0.
 
-## Release 0.19.0
+The GitHub source tree and npm listing are **not automatically synchronized**: npm displays the `README.md` from the latest published tarball. A new version must be published to update the npm README. Never overwrite an existing version.
 
-After the release workflow lands in `main`, open **Actions → Publish verified GitHub release → Run workflow**, select branch **main**, and keep version `0.19.0`. This requires a GitHub user with Actions and release permissions.
+## Patch release 0.19.1
 
-The workflow refuses to publish unless all six workflows were successful on that exact main commit: CI, Native debugger end-to-end, Native postmortem E2E, Loopback GDB remote E2E, Windows CodeLLDB minidump E2E, and CodeQL. It also runs `npm ci`, `npm run check` and `npm run check:pack` again.
+This patch release updates the npm-facing README, installation and documentation links, ownership/distribution wording, and release metadata without claiming new debugger runtime features.
 
-Only after those checks succeed will the workflow create or validate an annotated tag `v0.19.0`, attach an npm-format source/runtime archive and `SHA256SUMS`, and publish the GitHub release with notes from `RELEASE-0.19.0.md`. A preexisting release or tag at another commit causes failure rather than overwrite.
+1. Verify matching `package.json`, `package-lock.json`, and `qwen-extension.json` versions (`0.19.1`), npm scope, and `private: false`.
+2. Confirm the npm package [Trusted Publisher](https://docs.npmjs.com/trusted-publishers/) configuration: **GitHub Actions**, owner `spk-c`, repository `Qwen-dap-mcp`, workflow filename `release.yml`, environment blank, and `Allow npm publish` enabled.
+3. Merge the release PR. Wait until all **six** required GitHub Actions workflows have succeeded on the exact merge commit: CI, Native debugger end-to-end, Native postmortem E2E, Loopback GDB remote E2E, Windows CodeLLDB minidump E2E, and CodeQL.
+4. From **Actions → Publish verified npm and GitHub release → Run workflow**, select `main` and enter `0.19.1`. This workflow is **manual**, not a push-triggered auto-release.
+5. The workflow reruns `npm ci`, `npm run check`, and `npm run check:pack`; creates the npm archive and SHA256 manifest; publishes a new version with npm OIDC; then tags and creates the GitHub release.
+6. Verify that [npm](https://www.npmjs.com/package/@slp-dev1/qwen-dap-mcp) reports version `0.19.1`, shows the new README, and links to the maintained GitHub repository. Also inspect [GitHub Releases](https://github.com/spk-c/Qwen-dap-mcp/releases).
 
-This workflow is deliberately **manual only**: merging code or updating version metadata does not publish a release.
+If the npm version already exists, **do not republish it**. Prepare a new patch version. If npm succeeds but GitHub release creation fails, recover the matching GitHub tag/release separately without publishing the same npm version again.
 
 ## Maintainer checklist
 
-- Confirm `package.json`, `qwen-extension.json` and `src/version.js` agree on version.
-- Review `npm pack --dry-run --json`: no old maps, dumps, machine reports or private data.
-- Test clean Qwen extension installation and real stdio MCP discovery.
-- Check support for local GDB 15, LLDB-DAP 18, Windows CodeLLDB, GDB 18 core and gdbserver remote with the dedicated CI fixture.
-- Keep `private: true` unless the owner explicitly chooses and controls a new npm namespace.
+- Check package archive with `npm run check:pack` and ensure `README.md`, `LICENSE`, `NOTICE`, extension metadata, and built runtime are included, but no developer secrets, dumps, or machine-specific paths.
+- Test clean Qwen extension installation and stdio MCP discovery.
+- Keep live launch/attach capabilities distinct from `QWEN_DAP_MCP_PROFILE=inspect` and preserve fail-closed DAP policies.
+- Run native adapter integration tests only on owned test targets.
+- TypeScript `strict: true` is still tracked in [issue #24](https://github.com/spk-c/Qwen-dap-mcp/issues/24); the released package does not claim full strict compliance.
 
-Original TypeScript sources were absent from the imported repository. This fork retains editable JavaScript and regenerated declaration files.
+The historical [v0.19.0 GitHub release](https://github.com/spk-c/Qwen-dap-mcp/releases/tag/v0.19.0) was created before npm publishing was reconnected. Its release archive is not evidence that npm was updated.
