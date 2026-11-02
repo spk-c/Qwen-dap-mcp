@@ -108,7 +108,28 @@ jobs:
             test "$existing" = "$local_integrity" || { echo 'Existing npm tarball differs; refusing overwrite.'; exit 1; }
             echo 'Verified identical npm tarball; continuing with GitHub release recovery.'
           else
-            npm publish "./$archive" --access public --provenance --ignore-scripts
+            # npm Trusted Publishing generates provenance automatically, without an explicit --provenance.
+            publish_log=$(mktemp)
+            if npm publish "./$archive" --access public --ignore-scripts 2>&1 | tee "$publish_log"; then
+              echo 'Published with npm Trusted Publishing.'
+            else
+              if ! grep -q 'TLOG_CREATE_ENTRY_ERROR' "$publish_log" || ! grep -q 'equivalent entry already exists' "$publish_log"; then
+                echo 'npm publish failed for a reason other than an existing Sigstore log entry.'
+                exit 1
+              fi
+              # A failed attestation can occur after the registry has already accepted the artifact.
+              existing_after=$(npm view "@slp-dev1/qwen-dap-mcp@$RELEASE_VERSION" dist.integrity 2>/dev/null || true)
+              if [ -n "$existing_after" ]; then
+                local_integrity="sha512-$(openssl dgst -sha512 -binary "$archive" | openssl base64 -A)"
+                test "$existing_after" = "$local_integrity" || { echo 'Registry accepted a different tarball; refusing to continue.'; exit 1; }
+                echo 'npm already accepted the identical tarball; continuing.'
+              else
+                echo '::warning::Sigstore returned a duplicate transparency-log entry. Falling back to OIDC trusted publishing without a provenance attestation.'
+                echo 'npm provenance exception: Sigstore transparency log returned a duplicate-entry HTTP 409. This release used npm Trusted Publishing with provenance disabled for the retry.' >> "$GITHUB_STEP_SUMMARY"
+                npm publish "./$archive" --access public --provenance=false --ignore-scripts
+              fi
+            fi
+            rm -f "$publish_log"
           fi
       - name: Confirm npm package is available for MCP Registry verification
         shell: bash
