@@ -10,6 +10,7 @@ on:
 permissions:
   contents: write
   actions: read
+  id-token: write
 concurrency:
   group: publish-qwen-dap-mcp-release
   cancel-in-progress: false
@@ -58,6 +59,18 @@ jobs:
           npm pack --ignore-scripts --pack-destination release-assets
           cd release-assets
           sha256sum ./*.tgz > SHA256SUMS
+      - name: Install npm with OIDC trusted publishing support
+        run: npm install --global npm@11
+      - name: Publish verified package to npm via OIDC
+        shell: bash
+        run: |
+          test "$(node -p 'require("./package.json").name')" = '@slp-dev1/qwen-dap-mcp'
+          test "$(node -p 'require("./package.json").version')" = '0.19.0'
+          if npm view '@slp-dev1/qwen-dap-mcp@0.19.0' version >/dev/null 2>&1; then
+            echo 'npm version 0.19.0 already exists; refusing to overwrite.'
+            exit 1
+          fi
+          npm publish --access public --ignore-scripts
       - name: Tag vetted commit and publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
