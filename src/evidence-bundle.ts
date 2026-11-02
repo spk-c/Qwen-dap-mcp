@@ -3,17 +3,38 @@ import { randomBytes } from 'node:crypto';
 import { basename, dirname, join, resolve } from 'node:path';
 import { DapError } from './dap/errors.js';
 import { resolveExistingDirectory, resolveExistingFile } from './local-path.js';
+type EvidenceHypothesis = {
+    id?: string;
+    title?: string;
+    evidenceScore?: number;
+    supporting?: Array<{ summary?: string; kind?: string }>;
+    contradicting?: unknown[];
+    nextEvidence?: unknown[];
+};
+type EvidenceRecord = {
+    hypotheses?: EvidenceHypothesis[];
+    snapshot?: { frame?: { source?: { path?: string }; line?: number } };
+    report?: { fingerprint?: string; snapshot?: { frame?: { source?: { path?: string }; line?: number } } };
+    fingerprintsV2?: { semantic?: string };
+    fingerprint?: string;
+};
+type EvidenceExportOptions = {
+    path: string;
+    evidence: unknown;
+    overwrite?: boolean;
+    format?: 'json' | 'markdown' | 'sarif';
+};
 const MAX_EVIDENCE_FILE_BYTES = 8 * 1024 * 1024;
-function jsonSize(value) {
-    return Buffer.byteLength(JSON.stringify(value), 'utf8');
+function jsonSize(value: unknown): number {
+    return Buffer.byteLength(JSON.stringify(value) as string, 'utf8');
 }
-function assertBounded(value) {
+function assertBounded(value: unknown): void {
     const size = jsonSize(value);
     if (size > MAX_EVIDENCE_FILE_BYTES) {
         throw new DapError('Evidence bundle is ' + size + ' bytes; maximum is ' + MAX_EVIDENCE_FILE_BYTES + ' bytes.');
     }
 }
-function writableTarget(input, overwrite, format) {
+function writableTarget(input: string, overwrite: boolean, format: 'json' | 'markdown' | 'sarif'): string {
     if (!input.trim())
         throw new DapError('Evidence output path must not be empty.');
     const target = resolve(input);
@@ -38,7 +59,7 @@ function writableTarget(input, overwrite, format) {
     }
     return target;
 }
-export function buildSarif(evidence) {
+export function buildSarif(evidence: EvidenceRecord) {
     const hypotheses = Array.isArray(evidence?.hypotheses) ? evidence.hypotheses : [];
     const frame = evidence?.snapshot?.frame ?? evidence?.report?.snapshot?.frame;
     const results = hypotheses.slice(0, 20).map((hypothesis) => ({
@@ -83,7 +104,7 @@ export function buildSarif(evidence) {
             }],
     };
 }
-export function renderEvidenceMarkdown(evidence) {
+export function renderEvidenceMarkdown(evidence: EvidenceRecord) {
     const fingerprint = evidence?.fingerprintsV2?.semantic ?? evidence?.fingerprint ?? evidence?.report?.fingerprint;
     const hypotheses = Array.isArray(evidence?.hypotheses) ? evidence.hypotheses : [];
     const lines = [
@@ -107,13 +128,13 @@ export function renderEvidenceMarkdown(evidence) {
     lines.push('## Structured evidence', '', '```json', JSON.stringify(evidence, null, 2), '```', '');
     return lines.join('\n');
 }
-export function exportEvidenceBundle(options) {
+export function exportEvidenceBundle(options: EvidenceExportOptions) {
     assertBounded(options.evidence);
     const format = options.format ?? 'json';
     const target = writableTarget(options.path, options.overwrite ?? false, format);
     const content = format === 'markdown'
-        ? renderEvidenceMarkdown(options.evidence)
-        : JSON.stringify(format === 'sarif' ? buildSarif(options.evidence) : options.evidence, null, 2);
+        ? renderEvidenceMarkdown(options.evidence as EvidenceRecord)
+        : JSON.stringify(format === 'sarif' ? buildSarif(options.evidence as EvidenceRecord) : options.evidence, null, 2);
     const bytes = Buffer.byteLength(content, 'utf8');
     if (bytes > MAX_EVIDENCE_FILE_BYTES) {
         throw new DapError('Rendered evidence output is ' + bytes + ' bytes; maximum is ' + MAX_EVIDENCE_FILE_BYTES + ' bytes.');
@@ -146,7 +167,7 @@ export function exportEvidenceBundle(options) {
         overwritten: Boolean(options.overwrite),
     };
 }
-export function importEvidenceBundle(pathInput) {
+export function importEvidenceBundle(pathInput: string) {
     const path = resolveExistingFile(pathInput, 'Evidence bundle');
     const lowered = path.toLowerCase();
     const isSarif = lowered.endsWith('.qwen-dap.sarif') || lowered.endsWith('.qwen-dap.sarif.json');

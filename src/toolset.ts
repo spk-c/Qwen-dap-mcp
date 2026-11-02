@@ -1,3 +1,4 @@
+import type { McpServer } from '@modelcontextprotocol/server';
 import { logger } from './logger.js';
 import { resolveSecurityProfile, securityProfileDefaults } from './security-profile.js';
 import { DEBUG_SESSION_CONTROL_ANNOTATIONS, LOCAL_TARGET_EXECUTION_ANNOTATIONS, READ_ONLY_LOCAL_TOOL_ANNOTATIONS, SESSION_TEARDOWN_ANNOTATIONS, } from './tools/tool-annotations.js';
@@ -73,10 +74,10 @@ const READ_ONLY_FULL_TOOLS = new Set([
 const FILTERED_TOOL_HANDLE = Object.freeze({
     disable: () => undefined,
     enable: () => undefined,
-    update: (..._args) => undefined,
+    update: (..._args: unknown[]) => undefined,
     remove: () => undefined,
 });
-function defaultAnnotationsForTool(name) {
+function defaultAnnotationsForTool(name: string) {
     if (name === 'debug_disconnect' || name === 'debug_sessions')
         return SESSION_TEARDOWN_ANNOTATIONS;
     if (name === 'debug_compare_runs')
@@ -93,16 +94,16 @@ function defaultAnnotationsForTool(name) {
         return READ_ONLY_LOCAL_TOOL_ANNOTATIONS;
     return undefined;
 }
-function withBehaviorAnnotations(name, args) {
+function withBehaviorAnnotations(name: string, args: unknown[]): unknown[] {
     const config = args[0];
-    if (!config || typeof config !== 'object' || Array.isArray(config) || config.annotations)
+    if (!config || typeof config !== 'object' || Array.isArray(config) || (config as { annotations?: unknown }).annotations)
         return args;
     const annotations = defaultAnnotationsForTool(name);
     if (!annotations)
         return args;
     return [{ ...config, annotations }, ...args.slice(1)];
 }
-export function resolveToolsetMode(value = process.env.QWEN_DAP_MCP_TOOLSET) {
+export function resolveToolsetMode(value: string | undefined = process.env.QWEN_DAP_MCP_TOOLSET): string {
     if (value === undefined || value.trim() === '') {
         return securityProfileDefaults(resolveSecurityProfile()).toolset;
     }
@@ -112,36 +113,36 @@ export function resolveToolsetMode(value = process.env.QWEN_DAP_MCP_TOOLSET) {
     logger.warn('Invalid QWEN_DAP_MCP_TOOLSET; falling back to the safe agent toolset', { value });
     return 'agent';
 }
-export function toolsetAllows(mode, toolName) {
+export function toolsetAllows(mode: string, toolName: string): boolean {
     if (mode === 'full')
         return true;
     if (mode === 'forensics')
         return FORENSICS_TOOL_NAMES.has(toolName);
     return AGENT_TOOL_NAMES.has(toolName);
 }
-export function annotateToolRegistrar(registrar) {
+export function annotateToolRegistrar<T extends McpServer>(registrar: T): T {
     return new Proxy(registrar, {
         get(target, property, receiver) {
             if (property === 'registerTool') {
-                return (name, ...args) => target.registerTool.call(target, name, ...withBehaviorAnnotations(name, args));
+                return (name: string, ...args: unknown[]) => (target.registerTool as (...args: unknown[]) => unknown).call(target, name, ...withBehaviorAnnotations(name, args));
             }
             const value = Reflect.get(target, property, receiver);
             return typeof value === 'function' ? value.bind(target) : value;
         },
     });
 }
-export function filterToolRegistrar(registrar, mode) {
+export function filterToolRegistrar<T extends McpServer>(registrar: T, mode: string): T {
     if (mode === 'full')
         return registrar;
     return new Proxy(registrar, {
         get(target, property, receiver) {
             if (property === 'registerTool') {
-                return (name, ...args) => {
+                return (name: string, ...args: unknown[]) => {
                     if (!toolsetAllows(mode, name)) {
                         logger.debug('Tool registration filtered by active toolset', { mode, tool: name });
                         return FILTERED_TOOL_HANDLE;
                     }
-                    return target.registerTool.call(target, name, ...args);
+                    return (target.registerTool as (...args: unknown[]) => unknown).call(target, name, ...args);
                 };
             }
             const value = Reflect.get(target, property, receiver);
