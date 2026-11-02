@@ -1,4 +1,6 @@
 import * as z from 'zod/v4';
+import type { McpServer } from '@modelcontextprotocol/server';
+import type { GuardedDapSession } from '../dap/guarded-session.js';
 import { buildLldbDapAttachConfiguration, buildLldbDapLaunchConfiguration, buildLldbDapRemoteAttachConfiguration, discoverLldbDap, resolveLldbDapRemoteEndpoint, } from '../adapters/lldb-dap.js';
 import { REMOTE_DEBUG_HOSTS_ENV } from '../remote-endpoint.js';
 import { DEBUG_SESSION_CONTROL_ANNOTATIONS, LOCAL_TARGET_EXECUTION_ANNOTATIONS, READ_ONLY_LOCAL_TOOL_ANNOTATIONS, } from './tool-annotations.js';
@@ -6,15 +8,28 @@ const breakpointGroupSchema = z.object({
     source: z.string().min(1),
     lines: z.array(z.number().int().positive()).min(1),
 });
-function result(value) {
-    return { content: [{ type: 'text', text: JSON.stringify(value, null, 2) }] };
+type BreakpointGroup = z.output<typeof breakpointGroupSchema>;
+type DiscoveryArgs = { adapterPath?: string };
+type StartArgs = DiscoveryArgs & { cwd?: string; requestTimeoutMs?: number };
+type LaunchArgs = {
+    program: string;
+    args?: string[];
+    cwd?: string;
+    env?: Record<string, string>;
+    stopOnEntry: boolean;
+    breakpoints?: BreakpointGroup[];
+};
+type AttachArgs = { pid: number; program?: string; stopOnEntry: boolean; breakpoints?: BreakpointGroup[] };
+type RemoteAttachArgs = { host: string; port: number; program?: string; breakpoints?: BreakpointGroup[] };
+function result(value: unknown) {
+    return { content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }] };
 }
-function errorResult(error) {
+function errorResult(error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    return { content: [{ type: 'text', text: message }], isError: true };
+    return { content: [{ type: 'text' as const, text: message }], isError: true };
 }
-function wrap(handler) {
-    return async (args) => {
+function wrap<T>(handler: (args: T) => Promise<unknown> | unknown) {
+    return async (args: T) => {
         try {
             return result(await handler(args));
         }
@@ -23,7 +38,7 @@ function wrap(handler) {
         }
     };
 }
-export function registerLldbDapTools(server, session) {
+export function registerLldbDapTools(server: McpServer, session: GuardedDapSession): void {
     server.registerTool('debug_lldb_dap_info', {
         title: 'Locate lldb-dap',
         description: 'Locate the upstream LLVM lldb-dap adapter from an explicit path, LLDB_DAP_PATH, PATH (including common versioned binary names), or xcrun on macOS. This only discovers a local executable and does not start a debugger or target process.',
@@ -31,7 +46,7 @@ export function registerLldbDapTools(server, session) {
         inputSchema: z.object({
             adapterPath: z.string().min(1).optional(),
         }),
-    }, wrap(async ({ adapterPath }) => discoverLldbDap({
+    }, wrap(async ({ adapterPath }: DiscoveryArgs) => discoverLldbDap({
         ...(adapterPath ? { explicitPath: adapterPath } : {}),
     })));
     server.registerTool('debug_start_lldb_dap', {
@@ -43,7 +58,7 @@ export function registerLldbDapTools(server, session) {
             cwd: z.string().optional(),
             requestTimeoutMs: z.number().int().min(1000).max(120000).optional(),
         }),
-    }, wrap(async ({ adapterPath, cwd, requestTimeoutMs }) => {
+    }, wrap(async ({ adapterPath, cwd, requestTimeoutMs }: StartArgs) => {
         const adapter = discoverLldbDap({
             ...(adapterPath ? { explicitPath: adapterPath } : {}),
         });
@@ -67,7 +82,7 @@ export function registerLldbDapTools(server, session) {
             stopOnEntry: z.boolean().default(false),
             breakpoints: z.array(breakpointGroupSchema).optional(),
         }),
-    }, wrap(async ({ program, args, cwd, env, stopOnEntry, breakpoints }) => session.launch(buildLldbDapLaunchConfiguration({
+    }, wrap(async ({ program, args, cwd, env, stopOnEntry, breakpoints }: LaunchArgs) => session.launch(buildLldbDapLaunchConfiguration({
         program: program,
         ...(args ? { args: args } : {}),
         ...(cwd ? { cwd: cwd } : {}),
@@ -84,7 +99,7 @@ export function registerLldbDapTools(server, session) {
             stopOnEntry: z.boolean().default(true),
             breakpoints: z.array(breakpointGroupSchema).optional(),
         }),
-    }, wrap(async ({ pid, program, stopOnEntry, breakpoints }) => session.attach(buildLldbDapAttachConfiguration({
+    }, wrap(async ({ pid, program, stopOnEntry, breakpoints }: AttachArgs) => session.attach(buildLldbDapAttachConfiguration({
         pid: pid,
         ...(program ? { program: program } : {}),
         stopOnEntry: stopOnEntry,
@@ -99,7 +114,7 @@ export function registerLldbDapTools(server, session) {
             program: z.string().min(1).optional().describe('Optional local matching executable image for symbols and pre-attach breakpoint resolution.'),
             breakpoints: z.array(breakpointGroupSchema).optional().describe('Optional source breakpoints configured around remote attach setup.'),
         }),
-    }, wrap(async ({ host, port, program, breakpoints }) => {
+    }, wrap(async ({ host, port, program, breakpoints }: RemoteAttachArgs) => {
         const options = {
             host: host,
             port: port,
