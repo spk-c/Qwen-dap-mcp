@@ -108,7 +108,7 @@ jobs:
             test "$existing" = "$local_integrity" || { echo 'Existing npm tarball differs; refusing overwrite.'; exit 1; }
             echo 'Verified identical npm tarball; continuing with GitHub release recovery.'
           else
-            npm publish "$archive" --access public --provenance --ignore-scripts
+            npm publish "./$archive" --access public --provenance --ignore-scripts
           fi
       - name: Confirm npm package is available for MCP Registry verification
         shell: bash
