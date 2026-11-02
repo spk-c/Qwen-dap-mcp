@@ -224,6 +224,7 @@ Start with the [documentation index](https://github.com/spk-c/Qwen-dap-mcp/blob/
 
 | Topic | Guide |
 | --- | --- |
+| macOS experimental support | [docs/macos.md](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/macos.md) |
 | CodeLLDB on Windows | [docs/CODELLDB_WINDOWS.md](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/CODELLDB_WINDOWS.md) |
 | LLVM `lldb-dap` | [docs/lldb-dap.md](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/lldb-dap.md) |
 | GNU GDB DAP | [docs/gdb-dap.md](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/gdb-dap.md) |
