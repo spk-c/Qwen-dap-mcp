@@ -118,7 +118,7 @@ type FrameEvidence = {
     disassembly?: DebugProtocol.DisassembledInstruction[];
     collectionErrors?: string[];
 };
-type TerminalOutcome = { event: string; body?: { exitCode?: number } };
+type TerminalOutcome = { event: string; body?: { threadId?: number; exitCode?: number } };
 type BreakpointGroup = { source: string; lines: number[] };
 type StopToolArgs = z.output<typeof snapshotSchema> & { analysis?: z.output<typeof analysisSchema> };
 type SourceDisassemblyArgs = {
@@ -493,7 +493,7 @@ export function registerAgentDiagnosticTools(server: McpServer, session: Guarded
     }, async ({ mode, request, configuration, breakpoints, timeoutMs, program, args, cwd, env, stopOnEntry, adapterPath, dumpAdapter, requestTimeoutMs, dumpPath, sourceMap, snapshot, analysis, workflow, }: CrashToolArgs) => {
         try {
             return result(await session.runExclusiveLifecycle('debug this crash', async () => {
-                const snapshotOptions = (snapshot ?? {});
+                const snapshotOptions: RuntimeSnapshotOptions = (snapshot ?? {});
                 const analysisOptions = mergedAnalysisOptions(analysis, program, cwd);
                 const stage = workflow?.stage ?? 'diagnose';
                 const baseline = workflow?.baseline;
