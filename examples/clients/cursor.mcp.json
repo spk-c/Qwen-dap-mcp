@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "qwen-dap-mcp": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@slp-dev1/qwen-dap-mcp"
+      ]
+    }
+  }
+}

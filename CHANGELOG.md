@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased — Multi-client MCP discovery
+
+- Documented Claude Code, OpenAI Codex CLI/IDE, Gemini CLI, Cursor and VS Code Copilot local stdio setup with explicit cloud/local security boundaries.
+- Added example MCP configurations for each client, client-identity stdio initialize/tools-list smoke tests and a dedicated `npm run test:clients` entrypoint.
+- Updated README and npm keywords to reflect cross-client compatibility; no change to the native debugger runtime or supported adapters.
+
+
 ## [0.19.2] - 2026-11-02
 
 ### Discovery and documentation

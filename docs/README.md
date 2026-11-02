@@ -38,3 +38,14 @@ The maintained fork is configured to publish the `@slp-dev1/qwen-dap-mcp` npm pa
 - [Set up GDB/LLDB DAP debugging for MCP](tutorial-gdb-lldb-mcp.md)
 
 These examples describe intended debugger workflows for trusted, owned test programs. Refer to the platform-specific setup guides for exact adapter support and limitations.
+
+## Claude Code, Codex and other MCP clients
+
+The native debugger bridge is compatible with local **stdio MCP** clients and is not tied to the Qwen model. The model may run in a cloud provider, but the MCP process and native debugger must run in an environment with access to the target binary.
+
+- [Claude Code installation and native crash debugging](clients/claude-code.md)
+- [OpenAI Codex CLI and IDE integration](clients/codex.md)
+- [Gemini CLI, Cursor, VS Code Copilot, other clients and compatibility matrix](clients/other-clients.md)
+- [Client-specific example configurations](https://github.com/spk-c/Qwen-dap-mcp/tree/main/examples/clients)
+
+Run `npm run test:clients` to validate sample configurations and perform real stdio MCP initialize/tool-discovery smoke tests with multiple client identities (not proprietary client binaries). For native debugger coverage, review dedicated adapter E2E workflows.
