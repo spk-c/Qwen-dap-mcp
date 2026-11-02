@@ -267,7 +267,7 @@ export async function progressProbe(session: GuardedDapSession, options: Progres
             await session.continueExecution(snapshot.thread.id, false, Math.max(1000, intervalMs * 4));
             await new Promise((resolve) => setTimeout(resolve, intervalMs));
             const threads = await session.threads();
-            const preferred = threads.find((thread) => thread.id === snapshot.thread.id) ?? threads[0];
+            const preferred = threads.find((thread: DebugProtocol.Thread) => thread.id === snapshot.thread.id) ?? threads[0];
             if (!preferred)
                 throw new Error('Target exposed no thread to pause during progress probing.');
             await session.pause(preferred.id, true, Math.max(1000, intervalMs * 4));
