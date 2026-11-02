@@ -499,4 +499,3 @@ export function registerAdvancedRuntimeTools(server, session) {
         }),
     }, async ({ baselineFingerprint, currentFingerprint, terminal }) => structuredResult(regressionOracle(currentFingerprint, baselineFingerprint, terminal)));
 }
-//# sourceMappingURL=advanced-runtime.js.map

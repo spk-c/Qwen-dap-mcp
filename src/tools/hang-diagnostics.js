@@ -693,4 +693,3 @@ export function registerHangDiagnosticTool(server, session) {
         }
     });
 }
-//# sourceMappingURL=hang-diagnostics.js.map

@@ -651,4 +651,3 @@ export function registerRuntimeV2Tools(server: McpServer, session: GuardedDapSes
         return structuredResult(result);
     });
 }
-//# sourceMappingURL=runtime-v2.js.map

@@ -175,4 +175,3 @@ export function buildGdbDapCoreConfiguration(options: GdbDapCoreOptions) {
         ...(options.program ? { program: resolveExistingFile(options.program, 'Program image') } : {}),
     };
 }
-//# sourceMappingURL=gdb-dap.js.map

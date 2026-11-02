@@ -42,4 +42,3 @@ else {
     process.once('SIGTERM', () => close('SIGTERM'));
     logger.info('MCP server ready on stdio');
 }
-//# sourceMappingURL=index.js.map

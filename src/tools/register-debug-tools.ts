@@ -365,4 +365,3 @@ export function registerDebugTools(server: McpServer, session: GuardedDapSession
         return { disconnected: true };
     }));
 }
-//# sourceMappingURL=register-debug-tools.js.map

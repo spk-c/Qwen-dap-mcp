@@ -33,4 +33,3 @@ export function diagnosticPathWithinRoot(candidate: string, root: string): boole
     const prefix = root.endsWith('/') ? root : `${root}/`;
     return candidate.startsWith(prefix);
 }
-//# sourceMappingURL=path-normalization.js.map

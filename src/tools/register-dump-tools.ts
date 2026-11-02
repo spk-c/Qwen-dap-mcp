@@ -157,4 +157,3 @@ export function registerDumpTools(server: McpServer, session: GuardedDapSession)
         }),
     }, wrap(async (options: DumpOpenArgs) => openDump(session, options)));
 }
-//# sourceMappingURL=register-dump-tools.js.map

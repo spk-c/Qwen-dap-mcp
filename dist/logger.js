@@ -86,4 +86,3 @@ export function createLogger(options = {}) {
     };
 }
 export const logger = createLogger();
-//# sourceMappingURL=logger.js.map

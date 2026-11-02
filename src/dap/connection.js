@@ -538,4 +538,3 @@ export class DapConnection extends EventEmitter {
         this.pending.clear();
     }
 }
-//# sourceMappingURL=connection.js.map

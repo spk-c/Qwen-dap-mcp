@@ -49,4 +49,3 @@ export function normalizePostmortemSnapshot(snapshot) {
         ...(exception === undefined ? {} : { exception }),
     };
 }
-//# sourceMappingURL=postmortem-normalization.js.map

@@ -56,4 +56,3 @@ export function routeSessionToolRegistrar<T extends McpServer>(registrar: T, reg
         },
     });
 }
-//# sourceMappingURL=session-routing.js.map

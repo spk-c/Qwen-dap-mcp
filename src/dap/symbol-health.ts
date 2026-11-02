@@ -97,4 +97,3 @@ export function assessSymbolHealth(stack: DebugProtocol.StackFrame[], modules?: 
         limitations,
     };
 }
-//# sourceMappingURL=symbol-health.js.map

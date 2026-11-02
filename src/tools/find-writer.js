@@ -319,4 +319,3 @@ export function registerFindWriterTool(server, session) {
         }
     });
 }
-//# sourceMappingURL=find-writer.js.map

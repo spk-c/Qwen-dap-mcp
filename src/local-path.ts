@@ -39,4 +39,3 @@ export function resolveExistingDirectory(input: string, label: string): string {
     logger.debug('Validated local directory path', { label, path: resolved });
     return resolved;
 }
-//# sourceMappingURL=local-path.js.map

@@ -49,4 +49,3 @@ export function registerSessionTools(server, registry) {
         }
     });
 }
-//# sourceMappingURL=register-session-tools.js.map

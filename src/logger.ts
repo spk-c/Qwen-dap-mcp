@@ -89,4 +89,3 @@ export function createLogger(options: LoggerOptions = {}) {
     };
 }
 export const logger = createLogger();
-//# sourceMappingURL=logger.js.map

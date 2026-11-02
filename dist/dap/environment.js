@@ -25,4 +25,3 @@ export function mergeEnvironment(base = process.env, overrides, platform = proce
         ...normalizeEnvironmentOverrides(overrides, base, platform),
     };
 }
-//# sourceMappingURL=environment.js.map

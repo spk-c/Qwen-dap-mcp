@@ -53,4 +53,3 @@ export function normalizePostmortemSnapshot<T extends DumpEvidence>(snapshot: T)
         ...(exception === undefined ? {} : { exception }),
     };
 }
-//# sourceMappingURL=postmortem-normalization.js.map

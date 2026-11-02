@@ -48,4 +48,3 @@ export function securityProfileSnapshot(env = process.env) {
         note: 'Profiles provide defaults only. Explicit toolset/DAP-policy settings override their corresponding profile defaults; remote allowlisting and HOL Guard remain independent safety gates.',
     };
 }
-//# sourceMappingURL=security-profile.js.map
