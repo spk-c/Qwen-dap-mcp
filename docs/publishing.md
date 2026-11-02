@@ -37,3 +37,9 @@ After releasing, verify the exact version from:
 - [GitHub Releases](https://github.com/spk-c/Qwen-dap-mcp/releases)
 
 If MCP Registry publishing fails, do **not** forge a successful listing. The workflow deliberately leaves the GitHub release unfinished so that it can retry the identical npm tarball and complete the registry step. Always check both registries after publishing.
+
+## Sigstore transparency-log duplicate recovery
+
+npm Trusted Publishing normally generates package provenance automatically (no explicit `--provenance` flag is needed). An npm publish attempt may occasionally fail with `TLOG_CREATE_ENTRY_ERROR` / HTTP 409 when an equivalent transparency-log entry already exists, even though the package itself has not been published.
+
+The release workflow only handles this **specific** error: it first checks whether npm already accepted the **identical SHA-512 tarball**. If not, it retries publishing that same tarball with `--provenance=false`, preserving npm OIDC Trusted Publishing but omitting the optional public provenance attestation for that exception. The workflow displays a warning and notes the exception in the GitHub Actions summary. All other npm errors still fail the workflow. Maintainers should inspect the npm version's provenance status after release.
