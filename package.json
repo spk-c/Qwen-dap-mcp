@@ -29,7 +29,7 @@
     "check:pack": "node scripts/check-package-tarball.mjs",
     "check:types": "node scripts/check-type-coverage.mjs",
     "check:strict-budget": "node scripts/check-strict-budget.mjs",
-    "test:coverage": "node --experimental-test-coverage --test --test-coverage-exclude=dist/** --test-coverage-lines=38 --test-coverage-functions=42 --test-coverage-branches=74",
+    "test:coverage": "node --experimental-test-coverage --test --test-coverage-exclude=dist/** --test-coverage-lines=51 --test-coverage-functions=59 --test-coverage-branches=75",
     "bench:transport": "node benchmark/dap-transport.mjs",
     "test:clients": "node --test test/mcp-client-compat.test.mjs"
   },
