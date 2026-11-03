@@ -239,7 +239,7 @@ test('failed guard subprocess denies approval and never treats nonzero exit as a
  try{
    writeFileSync(file,'# fixture: node -I does not support this Python flag\n');
    const evaluator=createHolGuardEvaluator({enabled:true,pythonCommand:process.execPath,bridgePath:file,timeoutMs:5000});
-   await assert.rejects(()=>evaluator.evaluate({kind:'dap-request',command:'continue'}),/policy process failed|timed out|policy process/i);
+   await assert.rejects(()=>evaluator.evaluate({kind:'dap-request',command:'continue'}),/policy process failed|timed out|stdin failed|policy process/i);
  }finally{
    rmSync(dir,{recursive:true,force:true});
  }
