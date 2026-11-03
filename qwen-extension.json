@@ -1,6 +1,6 @@
 {
   "name": "qwen-dap-mcp",
-  "version": "0.19.3",
+  "version": "0.19.4",
   "displayName": "Qwen DAP MCP",
   "description": "Native C/C++ crash, hang, deadlock, Windows minidump and core-dump debugging for Qwen Code via a local DAP-to-MCP bridge.",
   "mcpServers": {
