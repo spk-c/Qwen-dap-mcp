@@ -33,6 +33,11 @@ The maintained fork is configured to publish the `@slp-dev1/qwen-dap-mcp` npm pa
 
 ## Guided setup and debugging
 
+- [Reproducible native C++ crash → real GDB evidence → temporary fix → verification](demo-native-crash.md)
+- [Official discovery links and accurate third-party directory listing](discoverability.md)
+- [Illustrated, non-simulated-workflow graphic](media/native-debugging-workflow.svg)
+
+
 - [Debug a native C/C++ crash with Qwen Code](tutorial-cpp-crash-debugging.md)
 - [Analyze a Windows minidump with CodeLLDB](tutorial-windows-minidump.md)
 - [Set up GDB/LLDB DAP debugging for MCP](tutorial-gdb-lldb-mcp.md)

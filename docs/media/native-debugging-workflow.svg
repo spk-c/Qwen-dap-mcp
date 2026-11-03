@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="520" viewBox="0 0 1280 520" role="img" aria-labelledby="title desc">
+<title id="title">Qwen DAP MCP native crash debugging workflow</title>
+<desc id="desc">Illustration of four stages: reproduce an authorized C++ crash, collect native debugger evidence, let a coding agent propose a correction, and repeat the reproduction to verify the result. This is a conceptual workflow, not a recording of an actual agent session.</desc>
+<rect width="1280" height="520" rx="24" fill="#0e1526"/>
+<path d="M0 85 H1280" stroke="#233c59" stroke-width="2"/>
+<rect x="38" y="24" width="12" height="12" rx="6" fill="#33d3bf"/>
+<text x="66" y="39" fill="#eff8ff" font-family="DejaVu Sans,Arial,sans-serif" font-size="24" font-weight="700">Native crash debugging with MCP</text>
+<text x="66" y="67" fill="#a3b7d3" font-family="DejaVu Sans,Arial,sans-serif" font-size="15">Claude Code · OpenAI Codex · Qwen Code → local stdio MCP → GDB / LLDB / CodeLLDB</text>
+<g font-family="DejaVu Sans,Arial,sans-serif">
+  <rect x="40" y="128" width="272" height="238" rx="17" fill="#172440" stroke="#335176" stroke-width="2"/>
+  <rect x="59" y="146" width="49" height="29" rx="7" fill="#e45c83"/><text x="83" y="166" font-size="16" fill="#fff" text-anchor="middle" font-weight="700">01</text>
+  <text x="60" y="213" font-size="22" fill="#f0f5fc" font-weight="700">Reproduce</text>
+  <text x="60" y="251" font-size="16" fill="#c0d0e5">Owned C++ test binary</text>
+  <text x="60" y="283" font-size="16" fill="#e88da7">SIGSEGV / crash marker</text>
+  <text x="60" y="322" font-size="13" fill="#94a9c7">Same args, debug symbols</text>
+
+  <rect x="348" y="128" width="272" height="238" rx="17" fill="#172440" stroke="#335176" stroke-width="2"/>
+  <rect x="367" y="146" width="49" height="29" rx="7" fill="#387dde"/><text x="391" y="166" font-size="16" fill="#fff" text-anchor="middle" font-weight="700">02</text>
+  <text x="368" y="213" font-size="22" fill="#f0f5fc" font-weight="700">Collect evidence</text>
+  <text x="368" y="251" font-size="16" fill="#c0d0e5">GDB / LLDB / CodeLLDB</text>
+  <text x="368" y="283" font-size="16" fill="#86bdf9">Stack · registers · locals</text>
+  <text x="368" y="322" font-size="13" fill="#94a9c7">Evidence before hypotheses</text>
+
+  <rect x="656" y="128" width="272" height="238" rx="17" fill="#172440" stroke="#335176" stroke-width="2"/>
+  <rect x="675" y="146" width="49" height="29" rx="7" fill="#805cdf"/><text x="699" y="166" font-size="16" fill="#fff" text-anchor="middle" font-weight="700">03</text>
+  <text x="676" y="213" font-size="22" fill="#f0f5fc" font-weight="700">Diagnose + fix</text>
+  <text x="676" y="251" font-size="16" fill="#c0d0e5">Agent interprets evidence</text>
+  <text x="676" y="283" font-size="16" fill="#b5a2ff">Minimal source change</text>
+  <text x="676" y="322" font-size="13" fill="#94a9c7">Edit / build via client tools</text>
+
+  <rect x="964" y="128" width="272" height="238" rx="17" fill="#172440" stroke="#335176" stroke-width="2"/>
+  <rect x="983" y="146" width="49" height="29" rx="7" fill="#1c9b83"/><text x="1007" y="166" font-size="16" fill="#fff" text-anchor="middle" font-weight="700">04</text>
+  <text x="984" y="213" font-size="22" fill="#f0f5fc" font-weight="700">Verify</text>
+  <text x="984" y="251" font-size="16" fill="#c0d0e5">Rebuild, rerun same input</text>
+  <text x="984" y="283" font-size="16" fill="#4bddb8">Observed pass or fail</text>
+  <text x="984" y="322" font-size="13" fill="#94a9c7">No unverified success claim</text>
+</g>
+<g stroke="#86bdf9" stroke-width="4" fill="none" stroke-linejoin="round"><path d="M320 247 H340"/><path d="M333 239 L342 247 L333 255"/><path d="M628 247 H648"/><path d="M641 239 L650 247 L641 255"/><path d="M936 247 H956"/><path d="M949 239 L958 247 L949 255"/></g>
+<rect x="40" y="394" width="1196" height="70" rx="11" fill="#102c39" stroke="#1f6d7a"/>
+<text x="60" y="421" fill="#77e1d4" font-family="DejaVu Sans,Arial,sans-serif" font-size="17" font-weight="700">Reproducible example</text>
+<text x="60" y="446" fill="#c5dfe6" font-family="DejaVu Sans,Arial,sans-serif" font-size="15">integration/fixture/native-debug.cpp · scripts/demo-native-crash.sh · docs/demo-native-crash.md</text>
+<text x="640" y="496" text-anchor="middle" fill="#778daa" font-family="DejaVu Sans,Arial,sans-serif" font-size="13">Illustrated workflow — not an actual debugger screenshot or model-generated fix transcript</text>
+</svg>

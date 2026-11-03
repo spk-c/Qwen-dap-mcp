@@ -1,6 +1,6 @@
 {
   "name": "@slp-dev1/qwen-dap-mcp",
-  "version": "0.19.3",
+  "version": "0.19.4",
   "description": "Native C/C++ crash, hang and minidump debugging for Claude Code, Codex, Qwen and other MCP coding agents via DAP, GDB, LLDB and CodeLLDB.",
   "type": "module",
   "main": "./dist/index.js",
