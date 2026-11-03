@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.4] - 2026-11-03 — MCP discovery and native debugger demo
+
+- Updated official MCP Registry title/description to explicitly describe Claude Code, Codex CLI, Qwen Code, local stdio MCP, C/C++, GDB/LLDB/CodeLLDB, crash, hang and dump debugging.
+- Added an honest, accessible vector workflow illustration, a reproducible Linux GDB crash → evidence → temporary fix → verification script and step-by-step demo guide.
+- Integrated the real GDB demo in the native Linux CI workflow; added canonical source/npm/official-registry links and a directory-ready maintained-fork listing.
+- Synced package, lockfile, Qwen extension and registry metadata to 0.19.4. No native debugger runtime behavior changes.
+
 ## [0.19.3] - 2026-11-02 — Multi-client MCP integration
 
 - Documented Claude Code, OpenAI Codex CLI/IDE, Gemini CLI, Cursor and VS Code Copilot local stdio setup with explicit cloud/local security boundaries.
