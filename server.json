@@ -1,19 +1,19 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.spk-c/qwen-dap-mcp",
-  "title": "Qwen DAP MCP — Native Debugger for AI Coding Agents",
-  "description": "Native crash, hang, minidump and core dump debugging via DAP, GDB, LLDB and MCP.",
+  "title": "Qwen DAP MCP — C/C++ Debugger for Claude Code, Codex & Qwen",
+  "description": "Local stdio MCP server for Claude Code, Codex CLI, Qwen Code and other AI agents: inspect C/C++ crashes, hangs, Windows minidumps and core dumps using GDB, LLDB or CodeLLDB.",
   "repository": {
     "url": "https://github.com/spk-c/Qwen-dap-mcp",
     "source": "github"
   },
-  "version": "0.19.3",
+  "version": "0.19.4",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@slp-dev1/qwen-dap-mcp",
-      "version": "0.19.3",
+      "version": "0.19.4",
       "transport": {
         "type": "stdio"
       }

@@ -16,6 +16,18 @@ Originally designed for **Qwen Code**, but usable from other **local stdio MCP c
 
 > **Maintained Apache-2.0 fork of the original project by SLP-DEV1.** The maintained source is [spk-c/Qwen-dap-mcp](https://github.com/spk-c/Qwen-dap-mcp); npm distributes [`@slp-dev1/qwen-dap-mcp`](https://www.npmjs.com/package/@slp-dev1/qwen-dap-mcp). GitHub's `main` may be ahead of the latest published npm version. See [fork notes](https://github.com/spk-c/Qwen-dap-mcp/blob/main/README-FORK-CHANGES.md) and [TypeScript migration status](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/typescript-migration.md).
 
+## See it in action: C++ crash → evidence → verification
+
+![Illustrated local C++ crash debugging workflow: reproduce, inspect with GDB/LLDB, propose fix, and rerun](https://raw.githubusercontent.com/spk-c/Qwen-dap-mcp/main/docs/media/native-debugging-workflow.svg)
+
+*Illustrated architecture/workflow, not a captured AI session or fabricated debugger transcript.* Reproduce an **actual** intentional crash in the project's own C++ fixture, collect a GDB backtrace, apply an illustrative change **only in a temporary copy**, and rerun the same command:
+
+```bash
+bash scripts/demo-native-crash.sh
+```
+
+Requires Linux, `g++` and `gdb`. CI also executes the demo with a real debugger. **[View step-by-step verified demo and Claude/Codex MCP setup](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/demo-native-crash.md)**.
+
 ## Why this exists
 
 Coding agents can read source and propose patches, but native failures often cannot be diagnosed reliably from source alone. The useful evidence lives at runtime: thread stacks, registers, locals, disassembly, exception state, modules, memory, wait states, symbols, and crash dumps.
@@ -265,10 +277,13 @@ These focused tutorials describe setup, expected debugger evidence and limitatio
 - **[C/C++ crash debugging with Qwen Code](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/tutorial-cpp-crash-debugging.md)** — reproduce a native crash, capture stack/register/local evidence and verify a fix.
 - **[Windows minidump debugging with CodeLLDB](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/tutorial-windows-minidump.md)** — inspect a crash dump with matching executable and symbols, without rerunning the crashing process.
 - **[GDB/LLDB MCP setup and troubleshooting](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/tutorial-gdb-lldb-mcp.md)** — install a DAP-capable adapter, discover MCP tools and resolve common adapter issues.
+- **[Reproducible native crash and fix-verification demo](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/demo-native-crash.md)** — build a real owned C++ test fixture, collect a GDB SIGSEGV backtrace, apply a temporary guard, and rerun the same argument.
 
 ## MCP Registry discovery
 
 The maintained package publishes its MCP metadata under **`io.github.spk-c/qwen-dap-mcp`** when a matching npm version and official registry publication succeed. This is separate from any historical registry listing for the original author. See [publishing and registry verification](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/publishing.md); a listing is not proof of a particular feature until its exact package version is verified.
+
+**Discover the maintained fork:** [Official MCP Registry](https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.spk-c%2Fqwen-dap-mcp) · [npm](https://www.npmjs.com/package/@slp-dev1/qwen-dap-mcp) · [Source and checksums](https://github.com/spk-c/Qwen-dap-mcp/releases) · [Directory-ready listing and attribution](https://github.com/spk-c/Qwen-dap-mcp/blob/main/docs/discoverability.md).
 
 ## Documentation
 
