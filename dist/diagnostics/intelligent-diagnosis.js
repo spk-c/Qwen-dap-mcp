@@ -215,8 +215,10 @@ function memoryRegisterRoles(rawInstruction, memoryText, armLike, attMemorySynta
     let baseAssigned = false;
     for (const match of matches) {
         const canonical = canonicalize(match[0]);
-        const start = match.index ?? rawInstruction.indexOf(match[0]);
-        const relativeStart = Math.max(0, start - rawInstruction.indexOf(memoryText));
+        // RegExp.matchAll(memoryText) reports indexes relative to memoryText,
+        // not to the full instruction. Subtracting an instruction offset here
+        // caused scaled index operands such as [rbx + rcx*4] to lose their role.
+        const relativeStart = match.index ?? memoryText.indexOf(match[0]);
         const after = memoryText.slice(relativeStart + match[0].length);
         if (/^\s*\*/.test(after)) {
             roles.set(canonical, 'index');

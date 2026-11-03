@@ -106,7 +106,9 @@ function parseEnabled(value) {
 function parseTimeout(value) {
     if (!value || value.trim() === '')
         return DEFAULT_TIMEOUT_MS;
-    const parsed = Number.parseInt(value, 10);
+    // Reject malformed/trailing timeout text instead of accepting parseInt prefixes.
+    const text = value.trim();
+    const parsed = /^\d+$/.test(text) ? Number(text) : Number.NaN;
     if (!Number.isSafeInteger(parsed) || parsed < 100 || parsed > MAX_TIMEOUT_MS) {
         throw new DapError(`Invalid QWEN_DAP_MCP_HOL_GUARD_TIMEOUT_MS '${value}'. Expected 100-${MAX_TIMEOUT_MS}.`);
     }

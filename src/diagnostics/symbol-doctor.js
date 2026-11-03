@@ -104,7 +104,9 @@ export function inspectPdbIdentity(input) {
     };
 }
 function stem(name) {
-    const base = basename(name).toLowerCase();
+    // Module paths may come from a Windows dump inspected on a Linux host.
+    // Treat both separators as path separators, regardless of host OS.
+    const base = basename(name.replace(/\\/g, '/')).toLowerCase();
     return base.replace(/\.(?:exe|dll|so(?:\.\d+)*|dylib|pdb|debug)$/i, '');
 }
 export function compareBinaryAndPdb(binary, pdb) {
