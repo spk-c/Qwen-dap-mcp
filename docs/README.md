@@ -53,3 +53,9 @@ Run `npm run test:clients` to validate sample configurations and perform real st
 ## Real CLI configuration checks
 
 The Real CLI MCP registration GitHub Actions workflow installs pinned official Claude Code and Codex executables and verifies that each can register and list the local MCP server in isolated temporary configuration directories without user credentials. The existing cross-client initialize/tools-list tests verify the live stdio protocol, and native debugger E2E tests check GDB/LLDB execution. This does not prove a model-driven tool call in an authenticated Claude/Codex session; that remains a separately authorized manual E2E check.
+
+## Runtime coverage regression suite (Issue #68, November 2026)
+
+The test suite now includes deterministic cross-platform fixtures for GDB/LLDB/CodeLLDB configuration and discovery, source/disassembly correlation, crash and hang analysis, ASLR-resistant runtime comparisons, ABI argument mapping, evidence-scored failure hypotheses, stack-integrity checks, and explicit-only lock-owner cycle detection. The fixtures never start arbitrary binaries or attach to external processes; native debugger end-to-end tests remain separate in CI.
+
+Use npm run test:coverage for Node's built-in coverage measurement. Current CI minimums are **51% lines, 59% functions and 75% branches** on the covered test run. These are deliberately below the observed local Windows values (54.03% / 63.09% / 77.24%) to leave modest cross-platform margin; a successful CI run is still required before a coverage claim for Linux. Keep raising the minimums only when genuine runtime paths are exercised, not by adding empty smoke tests or blanket exclusions. A higher long-term coverage target is tracked in Issue #68.
