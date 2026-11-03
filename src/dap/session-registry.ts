@@ -88,7 +88,17 @@ export class DapSessionRegistry {
             this.decrementActiveRequests(resolvedId);
             throw error;
         }
-        if (isPromiseLike(result)) {
+        // A thenable may expose a throwing then getter. Unwind the active
+        // count if inspection fails, or the session becomes permanently busy.
+        let asyncResult: boolean;
+        try {
+            asyncResult = isPromiseLike(result);
+        }
+        catch (error) {
+            this.decrementActiveRequests(resolvedId);
+            throw error;
+        }
+        if (asyncResult) {
             return Promise.resolve(result).finally(() => {
                 this.decrementActiveRequests(resolvedId);
             }) as T;
