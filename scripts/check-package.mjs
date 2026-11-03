@@ -12,6 +12,8 @@ assert.equal(registry.name, pkg.mcpName);
 assert.equal(registry.version, pkg.version);
 assert.equal(registry.packages[0].identifier, pkg.name);
 assert.equal(registry.packages[0].version, pkg.version);
+assert.ok(registry.title.includes('Claude Code') && registry.title.includes('Codex'), 'Registry title must identify supported coding clients');
+assert.ok(registry.description.includes('C/C++') && registry.description.includes('GDB'), 'Registry description must describe native debugger value');
 assert.equal(pkg.type, 'module');
 assert.equal(pkg.name, '@slp-dev1/qwen-dap-mcp');
 assert.equal(pkg.private, false, 'npm release package must be publishable');
