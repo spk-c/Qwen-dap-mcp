@@ -26,4 +26,4 @@ This workflow has **not** been executed with paid credentials merely by adding i
 
 ## Credential-free CLI preflight
 
-The standard **Real CLI MCP registration** workflow also runs `node scripts/check-auth-e2e-cli-flags.mjs` against the pinned Claude/Codex binaries. It examines only `--help` output and validates that all the runner's flags are supported. It performs **no inference**, uses no provider tokens, and does not prove that authenticated E2E has executed.
+The standard **Real CLI MCP registration** workflow also runs `node scripts/check-auth-e2e-cli-flags.mjs` against the pinned Claude/Codex binaries. It examines only `--help` output and validates the CLI options advertised there. Claude's print-mode-only `--max-turns` and `--max-budget-usd` are not listed in the pinned CLI's general help and therefore cannot be independently confirmed by this no-inference preflight; the paid manual run remains their definitive check. It performs **no inference**, uses no provider tokens, and does not prove that authenticated E2E has executed.
