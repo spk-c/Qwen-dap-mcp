@@ -24,8 +24,13 @@ function verifyHelp(name, output, expected) {
 
 verifyHelp('Claude Code', help('claude', ['--help']), [
   '--mcp-config', '--strict-mcp-config', '--allowedTools', '--tools',
-  '--max-turns', '--max-budget-usd', '--output-format', '--verbose',
+  '--output-format', '--verbose',
 ]);
 verifyHelp('Codex', help('codex', ['exec', '--help']), [
   '--json', '--ephemeral', '--sandbox', '--skip-git-repo-check',
 ]);
+
+// Some print-mode-only Claude switches are documented but not listed in this
+// pinned CLI's general --help output. They cannot be conclusively tested
+// without initiating a paid -p run, which ordinary CI must never do.
+process.stdout.write('Claude print-mode --max-turns/--max-budget-usd: live verification remains opt-in only\n');
