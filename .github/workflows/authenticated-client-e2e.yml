@@ -23,8 +23,6 @@ jobs:
     env:
       QWEN_PAID_E2E_APPROVAL: ${{ inputs.approve_paid_inference }}
       QWEN_PAID_E2E_CLIENT: ${{ inputs.client }}
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       CI: '1'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -38,4 +36,7 @@ jobs:
       - name: Install pinned official Claude and Codex clients
         run: npm install --global --allow-scripts=@anthropic-ai/claude-code --no-audit --no-fund @anthropic-ai/claude-code@2.1.316 @openai/codex@0.166.0
       - name: Execute one bounded, read-only model-driven MCP request per selected client
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: node integration/authenticated-model-e2e.mjs
