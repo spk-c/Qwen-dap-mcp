@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {verifiedClaudeInvocation, verifiedCodexInvocation} from '../integration/authenticated-model-e2e.mjs';
+import {verifiedClaudeInvocation, verifiedCodexInvocation} from '../integration/mcp-e2e-trace.mjs';
 
 test('authenticated E2E trace verifier rejects model text without an MCP tool call', () => {
   assert.equal(verifiedClaudeInvocation([{type:'assistant',message:{content:[{type:'text',text:'I used debug_status'}]}}]), false);

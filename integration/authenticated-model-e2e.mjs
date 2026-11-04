@@ -5,48 +5,12 @@ import {mkdtemp, mkdir, writeFile, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {eventsFrom, verifiedClaudeInvocation, verifiedCodexInvocation} from './mcp-e2e-trace.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const server = join(root, 'dist', 'index.js');
-const tool = 'debug_status';
 const serverName = 'qwen-dap-mcp';
 const prompt = 'Call the qwen-dap-mcp debug_status MCP tool exactly once with empty arguments. Do not use Bash, shell, file edits, or any other tools. Summarize the returned status briefly. Do not claim success without calling the tool.';
-
-function eventsFrom(stdout) {
-  return stdout.split(/\r?\n/).filter(Boolean).flatMap(line => {
-    try {return [JSON.parse(line)];} catch {return [];}
-  });
-}
-const matches = name => typeof name === 'string' && name.includes(serverName) && name.endsWith(tool);
-
-export function verifiedClaudeInvocation(events) {
-  const ids = new Set();
-  const successes = new Set();
-  for (const event of events) {
-    if (event.type === 'assistant') {
-      for (const part of event.message?.content ?? []) {
-        if (part.type === 'tool_use' && matches(part.name) && typeof part.id === 'string') ids.add(part.id);
-      }
-    }
-    if (event.type === 'user') {
-      for (const part of event.message?.content ?? []) {
-        if (part.type === 'tool_result' && part.is_error !== true && typeof part.tool_use_id === 'string') {
-          successes.add(part.tool_use_id);
-        }
-      }
-    }
-  }
-  return [...ids].some(id => successes.has(id));
-}
-
-export function verifiedCodexInvocation(events) {
-  return events.some(event => event.type === 'item.completed'
-    && event.item?.type === 'mcp_tool_call'
-    && event.item?.server === serverName
-    && event.item?.tool === tool
-    && event.item?.error == null
-    && event.item?.status !== 'failed');
-}
 
 function runCli(binary, args, env, timeoutMs = 150000) {
   return new Promise((resolve, reject) => {
