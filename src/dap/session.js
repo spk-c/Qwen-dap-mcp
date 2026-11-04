@@ -3,6 +3,7 @@ import { DapError, DapRequestError, DapTimeoutError } from './errors.js';
 import { assessSymbolHealth } from './symbol-health.js';
 const MAX_READ_MEMORY_BYTES = 1024 * 1024;
 const MAX_DISASSEMBLY_INSTRUCTIONS = 10_000;
+const MAX_STACK_TRACE_LEVELS = 200;
 const MAX_RELATIVE_DAP_OFFSET = 2_147_483_647;
 function assertSafeIntegerInRange(name, value, min, max) {
     if (!Number.isSafeInteger(value) || value < min || value > max) {
@@ -249,6 +250,7 @@ export class DapSession {
     }
     async stackTrace(threadId, startFrame = 0, levels = 20) {
         this.assertConfigured();
+        assertSafeIntegerInRange('levels', levels, 1, MAX_STACK_TRACE_LEVELS);
         const response = await this.connection.sendRequest('stackTrace', { threadId, startFrame, levels }, this.requestTimeoutMs);
         return (response.body?.stackFrames ?? []);
     }
