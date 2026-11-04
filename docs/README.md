@@ -57,7 +57,7 @@ Run `npm run test:clients` to validate sample configurations and perform real st
 
 ## Real CLI configuration checks
 
-The Real CLI MCP registration GitHub Actions workflow installs pinned official Claude Code and Codex executables and verifies that each can register and list the local MCP server in isolated temporary configuration directories without user credentials. The existing cross-client initialize/tools-list tests verify the live stdio protocol, and native debugger E2E tests check GDB/LLDB execution. This does not prove a model-driven tool call in an authenticated Claude/Codex session; that remains a separately authorized manual E2E check.
+The Real CLI MCP registration GitHub Actions workflow installs pinned official Claude Code and Codex executables and verifies that each can register and list the local MCP server in isolated temporary configuration directories without user credentials. The existing cross-client initialize/tools-list tests verify the live stdio protocol, and native debugger E2E tests check GDB/LLDB execution. This does not prove a model-driven tool call in an authenticated Claude/Codex session. A separately approved, manual-only and paid [model-driven MCP E2E workflow](authenticated-model-e2e.md) now provides that test path; it is not executed as part of normal CI.
 
 ## Runtime coverage regression suite (Issue #68, November 2026)
 
@@ -72,3 +72,7 @@ A new set of regression suites exercises the intelligent diagnosis operand parse
 Two real runtime defects were corrected: the Intel scaled-index detector previously used an instruction-relative offset for matches within a memory operand, so expressions like [rbx + rcx*4] could lose the index role; and a thenable with a throwing then getter could permanently leak a session's active-request count. Timeout parsing for HOL Guard also now rejects trailing non-numeric text. The canonical edits are in the TypeScript sources; generated JS mirrors and dist artifacts remain part of the package and must be rebuilt together.
 
 On the local Windows test runner, npm run test:coverage passes 192 tests and reports **70.01% line, 77.40% function, and 81.71% branch coverage**. The required CI floors are **68% line, 74% function, and 79% branch** to provide cross-platform headroom; verify the actual Linux coverage output on the PR before merging. Authenticated, model-driven Claude/Codex E2E calls still require an explicit opt-in and are not claimed by the existing real-CLI registration test. See Issue #68 for the next work items.
+
+## Real-adapter fault injection (Issue #68)
+
+The [controlled subprocess stress tests](../test/adapter-failure-stress.test.mjs) exercise 96 overlapping requests across four independent DAP adapters, process crash and restart, timeout and recovery, degraded responses and malformed frames. These tests run without real debuggees, API credentials, or provider inference. A dedicated [manual authenticated E2E guide](authenticated-model-e2e.md) documents the separate paid AI-client test.
