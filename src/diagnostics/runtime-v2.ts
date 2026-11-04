@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { DebugProtocol } from '@vscode/debugprotocol';
+import { parseAddress } from './address-parser.js';
 
 type RuntimeSnapshot = {
     frame: DebugProtocol.StackFrame;
@@ -164,19 +165,6 @@ export function crashFingerprintsV2(snapshot: RuntimeSnapshot, outputLines: stri
         note: 'exact keeps source lines, semantic suppresses path/address noise, and family intentionally collapses nearby failures into broader runtime families.',
     };
 }
-function parseAddress(value: string | undefined): bigint | undefined {
-    if (!value)
-        return undefined;
-    const match = value.replace(/\`/g, '').match(/0x([0-9a-f]+)/i);
-    if (!match)
-        return undefined;
-    try {
-        return BigInt(`0x${match[1]}`);
-    }
-    catch {
-        return undefined;
-    }
-}
 function parseModuleRange(range: string | undefined): { start: bigint; end: bigint } | undefined {
     if (!range)
         return undefined;
@@ -195,7 +183,7 @@ function parseModuleRange(range: string | undefined): { start: bigint; end: bigi
     }
 }
 export function moduleForAddress(modules: DebugProtocol.Module[] | undefined, address: string) {
-    const target = parseAddress(address);
+    const target = parseAddress(address, 'hex-only');
     if (target === undefined || !modules?.length)
         return undefined;
     for (const module of modules) {
@@ -236,7 +224,7 @@ export function analyzeStackIntegrity(snapshot: RuntimeSnapshot, outputLines: st
     }
     const registerMap = new Map(snapshot.registers.map((register) => [register.name.toLowerCase(), register.value]));
     const spName = registerMap.has('rsp') ? 'rsp' : registerMap.has('sp') ? 'sp' : undefined;
-    const sp = spName ? parseAddress(registerMap.get(spName)) : undefined;
+    const sp = spName ? parseAddress(registerMap.get(spName), 'hex-only') : undefined;
     if (sp !== undefined && sp % 16n !== 0n) {
         findings.push({
             kind: 'non-16-byte-aligned-stack-pointer',

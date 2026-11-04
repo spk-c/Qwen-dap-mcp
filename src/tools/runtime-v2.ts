@@ -10,6 +10,7 @@ import { discoverLldbDap } from '../adapters/lldb-dap.js';
 import { buildRrReplayPlan, discoverRr, recordWithRr } from '../adapters/rr.js';
 import { ManagedRrReplay } from '../adapters/rr-replay.js';
 import { DapError } from '../dap/errors.js';
+import { parseAddress } from '../diagnostics/address-parser.js';
 import { buildLockOwnerGraph, classifyThreadObservation, compareCrashFamilies, moduleForAddress, } from '../diagnostics/runtime-v2.js';
 import { configuredSymbolResolvers, findLocalSymbolCandidates, inspectBinaryIdentity, inspectPdbIdentity, symbolMismatchSummary, } from '../diagnostics/symbol-doctor.js';
 import { exportEvidenceBundle, importEvidenceBundle } from '../evidence-bundle.js';
@@ -51,17 +52,6 @@ function debuggerOutput(session: GuardedDapSession): string[] {
     })
         .filter(Boolean);
     return [...status.recentAdapterStderr.slice(-50), ...dap.slice(-50)].slice(-100);
-}
-function parsePointer(value: string): bigint | undefined {
-    const match = value.replace(/\`/g, '').match(/0x([0-9a-f]+)/i);
-    if (!match)
-        return undefined;
-    try {
-        return BigInt('0x' + match[1]);
-    }
-    catch {
-        return undefined;
-    }
 }
 function pointerSize(snapshot: { registers: Array<{ name: string }> }): number {
     const names = new Set(snapshot.registers.map((register) => register.name.toLowerCase()));
@@ -559,7 +549,7 @@ export function registerRuntimeV2Tools(server: McpServer, session: GuardedDapSes
             const pointerText = args.pointer ?? observed?.value;
             if (!pointerText)
                 throw new DapError('debug_cpp_object requires pointer or a name that resolves to an exact local/register.');
-            const address = parsePointer(pointerText);
+            const address = parseAddress(pointerText, 'hex-only');
             if (address === undefined || address === 0n)
                 throw new DapError('Object pointer must resolve to a non-zero hexadecimal address.');
             const memory = await session.readMemory(pointerText, args.bytes, 0);

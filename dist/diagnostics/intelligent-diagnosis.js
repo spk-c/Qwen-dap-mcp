@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { parseAddress } from './address-parser.js';
 import { diagnosticPathWithinRoot, normalizeDiagnosticPath } from './path-normalization.js';
 const RUNTIME_MODULE_RE = /^(?:ntdll|kernel32|kernelbase|ucrtbase|vcruntime\d*|msvcp\d*|libc(?:\+\+)?|libstdc\+\+|libgcc_s|libpthread|libm|ld-linux|libsystem_[^/\\]*|dyld|objc|corefoundation)(?:\.[^/\\]+)?$/i;
 const RUNTIME_PATH_RE = /(?:^|[/\\])(?:windows[/\\]system32|usr[/\\]lib|lib[/\\](?:x86_64-linux-gnu|aarch64-linux-gnu)|system[/\\]library)(?:[/\\]|$)/i;
@@ -114,22 +115,6 @@ export function selectProjectFrame(stack, options = {}) {
         usedExplicitProjectHint: hints.roots.size > 0 || hints.modules.size > 0,
     };
 }
-function parseAddress(value) {
-    if (!value)
-        return undefined;
-    const normalized = value.trim().replace(/[`'_\s]/g, '');
-    const hex = /0x([0-9a-f]+)/i.exec(normalized)?.[1];
-    try {
-        if (hex)
-            return BigInt(`0x${hex}`);
-        if (/^-?\d+$/.test(normalized))
-            return BigInt(normalized);
-    }
-    catch {
-        return undefined;
-    }
-    return undefined;
-}
 function suspiciousKind(value) {
     if (!value)
         return undefined;
@@ -177,13 +162,13 @@ function currentInstruction(evidence) {
     const exact = instructions.find((item) => item.address.toLowerCase() === ip.toLowerCase());
     if (exact)
         return exact;
-    const target = parseAddress(ip);
+    const target = parseAddress(ip, 'lenient');
     if (target === undefined)
         return instructions[0];
     let nearest;
     let distance;
     for (const instruction of instructions) {
-        const address = parseAddress(instruction.address);
+        const address = parseAddress(instruction.address, 'lenient');
         if (address === undefined)
             continue;
         const delta = address >= target ? address - target : target - address;
@@ -266,11 +251,11 @@ export function analyzeInstructionOperands(evidence) {
     });
     const variableBindings = [];
     for (const local of evidence.locals) {
-        const localValue = parseAddress(local.value);
+        const localValue = parseAddress(local.value, 'lenient');
         if (localValue === undefined)
             continue;
         for (const binding of bindings) {
-            const registerValue = parseAddress(binding.value);
+            const registerValue = parseAddress(binding.value, 'lenient');
             if (registerValue === undefined || binding.value === undefined || registerValue !== localValue)
                 continue;
             if (localValue === 0n && !looksPointerLike(local))
@@ -335,7 +320,7 @@ function compactFrame(assessment, role) {
     };
 }
 function comparableValue(value) {
-    const parsed = parseAddress(value);
+    const parsed = parseAddress(value, 'lenient');
     return parsed === undefined ? undefined : `0x${parsed.toString(16)}`;
 }
 function buildProvenance(evidence) {

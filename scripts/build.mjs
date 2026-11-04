@@ -34,5 +34,5 @@ function mirrorGeneratedJs(dir, relative = '') {
   }
 }
 mirrorGeneratedJs(output);
-if (count !== 51) throw new Error('Expected 51 migrated runtime modules, got ' + count);
+if (count !== 52) throw new Error('Expected 52 migrated runtime modules, got ' + count);
 console.log('Built ' + count + ' TypeScript modules and generated JS mirrors.');

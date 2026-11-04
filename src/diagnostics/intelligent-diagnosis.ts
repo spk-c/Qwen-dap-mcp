@@ -1,6 +1,7 @@
 import path from 'node:path';
 import type { DebugProtocol } from '@vscode/debugprotocol';
 import type { DapSession } from '../dap/session.js';
+import { parseAddress } from './address-parser.js';
 import { analyzeRuntimeSnapshot } from './analyze-snapshot.js';
 type RuntimeSnapshot = Awaited<ReturnType<DapSession['runtimeSnapshot']>>;
 type BaseDiagnosis = ReturnType<typeof analyzeRuntimeSnapshot>;
@@ -145,22 +146,6 @@ export function selectProjectFrame(stack: DebugProtocol.StackFrame[], options: P
         usedExplicitProjectHint: hints.roots.size > 0 || hints.modules.size > 0,
     };
 }
-function parseAddress(value: string | undefined): bigint | undefined {
-    if (!value)
-        return undefined;
-    const normalized = value.trim().replace(/[`'_\s]/g, '');
-    const hex = /0x([0-9a-f]+)/i.exec(normalized)?.[1];
-    try {
-        if (hex)
-            return BigInt(`0x${hex}`);
-        if (/^-?\d+$/.test(normalized))
-            return BigInt(normalized);
-    }
-    catch {
-        return undefined;
-    }
-    return undefined;
-}
 function suspiciousKind(value: string | undefined): string | undefined {
     if (!value)
         return undefined;
@@ -208,13 +193,13 @@ function currentInstruction(evidence: FrameEvidence): DebugProtocol.Disassembled
     const exact = instructions.find((item) => item.address.toLowerCase() === ip.toLowerCase());
     if (exact)
         return exact;
-    const target = parseAddress(ip);
+    const target = parseAddress(ip, 'lenient');
     if (target === undefined)
         return instructions[0];
     let nearest: DebugProtocol.DisassembledInstruction | undefined;
     let distance: bigint | undefined;
     for (const instruction of instructions) {
-        const address = parseAddress(instruction.address);
+        const address = parseAddress(instruction.address, 'lenient');
         if (address === undefined)
             continue;
         const delta = address >= target ? address - target : target - address;
@@ -297,11 +282,11 @@ export function analyzeInstructionOperands(evidence: FrameEvidence) {
     });
     const variableBindings: Array<{ variable: string; variableType?: string; variableValue: string; register: string; registerValue: string; confidence: string; reason: string }> = [];
     for (const local of evidence.locals) {
-        const localValue = parseAddress(local.value);
+        const localValue = parseAddress(local.value, 'lenient');
         if (localValue === undefined)
             continue;
         for (const binding of bindings) {
-            const registerValue = parseAddress(binding.value);
+            const registerValue = parseAddress(binding.value, 'lenient');
             if (registerValue === undefined || binding.value === undefined || registerValue !== localValue)
                 continue;
             if (localValue === 0n && !looksPointerLike(local))
@@ -366,7 +351,7 @@ function compactFrame(assessment: FrameAssessment, role: string) {
     };
 }
 function comparableValue(value: string): string | undefined {
-    const parsed = parseAddress(value);
+    const parsed = parseAddress(value, 'lenient');
     return parsed === undefined ? undefined : `0x${parsed.toString(16)}`;
 }
 function buildProvenance(evidence: FrameEvidence[]): PointerTrail[] {

@@ -1,5 +1,6 @@
 import type { DebugProtocol } from '@vscode/debugprotocol';
 import type { DapSession } from '../dap/session.js';
+import { parseAddress } from './address-parser.js';
 type RuntimeSnapshot = Awaited<ReturnType<DapSession['runtimeSnapshot']>> & { postmortem?: boolean };
 type Classification = { category: string; crashLikely: boolean; confidence: string };
 type SuspiciousVariable = {
@@ -114,29 +115,15 @@ function classify(snapshot: RuntimeSnapshot): Classification {
             return { category: 'unknown', crashLikely: false, confidence: 'low' };
     }
 }
-function parseAddress(value: string | undefined): bigint | undefined {
-    if (!value)
-        return undefined;
-    const compact = value.trim().replace(/[`'_\s]/g, '');
-    const match = /^0x([0-9a-f]+)$/i.exec(compact);
-    if (!match?.[1])
-        return undefined;
-    try {
-        return BigInt(`0x${match[1]}`);
-    }
-    catch {
-        return undefined;
-    }
-}
 export function correlateSourceDisassembly(snapshot: RuntimeSnapshot) {
     const instructions = snapshot.disassembly ?? [];
     const ip = snapshot.frame.instructionPointerReference;
-    const ipAddress = parseAddress(ip);
+    const ipAddress = parseAddress(ip, 'exact');
     let currentIndex = instructions.findIndex((instruction: DebugProtocol.DisassembledInstruction) => instruction.address.toLowerCase() === ip?.toLowerCase());
     if (currentIndex < 0 && ipAddress !== undefined && instructions.length > 0) {
         let nearestDistance: bigint | undefined;
         for (let index = 0; index < instructions.length; index += 1) {
-            const address = parseAddress(instructions[index]?.address);
+            const address = parseAddress(instructions[index]?.address, 'exact');
             if (address === undefined)
                 continue;
             const distance = address >= ipAddress ? address - ipAddress : ipAddress - address;

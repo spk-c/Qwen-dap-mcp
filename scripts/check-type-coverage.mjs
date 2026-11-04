@@ -17,5 +17,5 @@ function visit(dir){
     }
 }
 visit(source);
-assert.equal(checked,51,'Expected 51 checked TypeScript runtime modules');
+assert.equal(checked,52,'Expected 52 checked TypeScript runtime modules');
 console.log('Verified '+checked+' TypeScript runtime modules without @ts-nocheck.');
