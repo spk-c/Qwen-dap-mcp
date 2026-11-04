@@ -5,6 +5,7 @@ import { delimiter, dirname, extname, isAbsolute, join, resolve } from 'node:pat
 import { fileURLToPath } from 'node:url';
 import { DapError } from './errors.js';
 import { mergeEnvironment } from './environment.js';
+import { isHolGuardEnabledToken } from '../security-profile.js';
 import { createDapRequestPolicy, resolveDapPolicyMode, } from './request-policy.js';
 import type { DapPolicyDecision, DapRequestContext } from './request-policy.js';
 
@@ -128,7 +129,7 @@ function parseEnabled(value: string | undefined): boolean {
     if (value === undefined || value.trim() === '')
         return false;
     const normalized = value.trim().toLowerCase();
-    if (['1', 'true', 'yes', 'on', 'enforce'].includes(normalized))
+    if (isHolGuardEnabledToken(normalized))
         return true;
     if (['0', 'false', 'no', 'off', 'disabled'].includes(normalized))
         return false;

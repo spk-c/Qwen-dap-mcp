@@ -17,6 +17,15 @@ const PROFILES: Record<SecurityProfile, { toolset: string; dapPolicy: string; de
         description: 'High-level forensic workflows without exposing the raw manual DAP surface. Set QWEN_DAP_MCP_TOOLSET=full explicitly for low-level commands.',
     },
 };
+const HOL_GUARD_ENABLED_TOKENS = new Set(['1', 'true', 'yes', 'on', 'enforce']);
+/**
+ * Shared HOL Guard enable-token predicate. Both the gate itself
+ * (hol-guard-policy parseEnabled) and the security profile snapshot must
+ * agree on which raw QWEN_DAP_MCP_HOL_GUARD values enable the guard.
+ */
+export function isHolGuardEnabledToken(value: string | undefined): boolean {
+    return HOL_GUARD_ENABLED_TOKENS.has((value ?? '').trim().toLowerCase());
+}
 export function resolveSecurityProfile(value: string | undefined = process.env.QWEN_DAP_MCP_PROFILE): SecurityProfile {
     const normalized = value?.trim().toLowerCase();
     if (!normalized)
@@ -42,7 +51,7 @@ export function securityProfileSnapshot(env = process.env) {
             toolset: env.QWEN_DAP_MCP_TOOLSET?.trim() || undefined,
             dapPolicy: env.QWEN_DAP_MCP_DAP_POLICY?.trim() || undefined,
             remoteHostsConfigured: Boolean(env.QWEN_DAP_MCP_REMOTE_DEBUG_HOSTS?.trim()),
-            holGuardEnabled: /^(?:1|true|yes|on)$/i.test(env.QWEN_DAP_MCP_HOL_GUARD?.trim() ?? ''),
+            holGuardEnabled: isHolGuardEnabledToken(env.QWEN_DAP_MCP_HOL_GUARD),
             symbolServersConfigured: Boolean(env.QWEN_DAP_MCP_SYMBOL_SERVERS?.trim()),
         },
         note: 'Profiles provide defaults only. Explicit toolset/DAP-policy settings override their corresponding profile defaults; remote allowlisting and HOL Guard remain independent safety gates.',

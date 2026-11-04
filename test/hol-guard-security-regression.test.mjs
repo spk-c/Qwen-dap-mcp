@@ -9,7 +9,7 @@ import {
  resolveAdapterExecutable,createHolGuardEvaluator,shouldConsultHolGuard,
  createGuardedDapRequestPolicy,requireHolGuardAdapterStart
 } from '../src/dap/hol-guard-policy.js';
-import {resolveSecurityProfile,securityProfileDefaults,securityProfileSnapshot} from '../src/security-profile.js';
+import {resolveSecurityProfile,securityProfileDefaults,securityProfileSnapshot,isHolGuardEnabledToken} from '../src/security-profile.js';
 
 test('inspect profile denies implicit execution/control while overrides remain visible',()=>{
  assert.equal(resolveSecurityProfile(' INSPECT '),'inspect');
@@ -209,6 +209,33 @@ test('environment-driven HOL Guard toggles reject unknown values instead of sile
  }finally{
    if(original===undefined)delete process.env[key];
    else process.env[key]=original;
+ }
+});
+
+test('HOL Guard enable tokens are shared across gate, predicate, and snapshot',()=>{
+ const key='QWEN_DAP_MCP_HOL_GUARD';
+ const original=process.env[key];
+ const dir=mkdtempSync(join(tmpdir(),'holguard-tokens-'));
+ const file=join(dir,'policy.py');
+ try{
+   writeFileSync(file,'# no-op\n');
+   const opts={pythonCommand:process.execPath,bridgePath:file};
+   for(const value of ['1','true','yes','on','enforce',' ON ','True','YES']){
+     process.env[key]=value;
+     assert.equal(isHolGuardEnabledToken(value),true,`predicate ${value}`);
+     assert.equal(createHolGuardEvaluator(opts).enabled,true,`gate ${value}`);
+     assert.equal(securityProfileSnapshot({[key]:value}).overrides.holGuardEnabled,true,`snapshot ${value}`);
+   }
+   for(const value of ['0','false','no','off','disabled','','   ']){
+     process.env[key]=value;
+     assert.equal(isHolGuardEnabledToken(value),false,`predicate ${value}`);
+     assert.equal(createHolGuardEvaluator(opts).enabled,false,`gate ${value}`);
+     assert.equal(securityProfileSnapshot({[key]:value}).overrides.holGuardEnabled,false,`snapshot ${value}`);
+   }
+ }finally{
+   if(original===undefined)delete process.env[key];
+   else process.env[key]=original;
+   rmSync(dir,{recursive:true,force:true});
  }
 });
 
