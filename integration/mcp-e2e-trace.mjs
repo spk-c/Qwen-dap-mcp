@@ -8,7 +8,7 @@ export function eventsFrom(stdout) {
     try {return [JSON.parse(line)];} catch {return [];}
   });
 }
-const matches = name => typeof name === 'string' && name.includes(serverName) && name.endsWith(tool);
+const expectedClaudeTool = `mcp__${serverName}__${tool}`;
 
 export function verifiedClaudeInvocation(events) {
   const ids = new Set();
@@ -16,12 +16,12 @@ export function verifiedClaudeInvocation(events) {
   for (const event of events) {
     if (event.type === 'assistant') {
       for (const part of event.message?.content ?? []) {
-        if (part.type === 'tool_use' && matches(part.name) && typeof part.id === 'string') ids.add(part.id);
+        if (part.type === 'tool_use' && part.name === expectedClaudeTool && typeof part.id === 'string') ids.add(part.id);
       }
     }
     if (event.type === 'user') {
       for (const part of event.message?.content ?? []) {
-        if (part.type === 'tool_result' && part.is_error !== true && typeof part.tool_use_id === 'string') {
+        if (part.type === 'tool_result' && part.is_error !== true && part.content != null && typeof part.tool_use_id === 'string') {
           successes.add(part.tool_use_id);
         }
       }
@@ -36,5 +36,9 @@ export function verifiedCodexInvocation(events) {
     && event.item?.server === serverName
     && event.item?.tool === tool
     && event.item?.error == null
-    && event.item?.status !== 'failed');
+    && event.item?.status === 'completed'
+    && event.item?.result != null
+    && event.item?.result?.isError !== true
+    && Array.isArray(event.item?.result?.content)
+    && event.item.result.content.length > 0);
 }

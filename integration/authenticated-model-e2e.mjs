@@ -12,9 +12,9 @@ const server = join(root, 'dist', 'index.js');
 const serverName = 'qwen-dap-mcp';
 const prompt = 'Call the qwen-dap-mcp debug_status MCP tool exactly once with empty arguments. Do not use Bash, shell, file edits, or any other tools. Summarize the returned status briefly. Do not claim success without calling the tool.';
 
-function runCli(binary, args, env, timeoutMs = 150000) {
+function runCli(binary, args, env, timeoutMs = 150000, cwd = root) {
   return new Promise((resolve, reject) => {
-    const child = spawn(binary, args, {cwd: root, env, shell: false, windowsHide: true, stdio: ['ignore','pipe','pipe']});
+    const child = spawn(binary, args, {cwd, env, shell: false, windowsHide: true, stdio: ['ignore','pipe','pipe']});
     let stdout = '';
     let stderr = '';
     let exceeded = false;
@@ -51,10 +51,10 @@ async function runClaude(temp, env) {
   const output = await runCli('claude', [
     '-p', '--mcp-config', config, '--strict-mcp-config',
     '--allowedTools', 'mcp__qwen-dap-mcp__debug_status',
-    '--tools', 'mcp__qwen-dap-mcp__debug_status',
+    '--tools', '', // Disable built-in Claude tools; --tools does not select MCP tools.
     '--max-turns', '3', '--max-budget-usd', '0.10',
     '--output-format', 'stream-json', '--verbose', prompt,
-  ], {...env, CLAUDE_CONFIG_DIR: join(temp, 'claude-home')});
+  ], {...env, CLAUDE_CONFIG_DIR: join(temp, 'claude-home')}, 150000, temp);
   assert.ok(verifiedClaudeInvocation(eventsFrom(output)),
     'Claude did not produce a successful structured MCP debug_status tool result');
 }
@@ -63,11 +63,11 @@ async function runCodex(temp, env) {
   const codexHome = join(temp, 'codex-home');
   await mkdir(codexHome, {recursive: true});
   const isolated = {...env, CODEX_HOME: codexHome};
-  await runCli('codex', ['mcp', 'add', serverName, '--', process.execPath, server], isolated, 20000);
+  await runCli('codex', ['mcp', 'add', serverName, '--', process.execPath, server], isolated, 20000, temp);
   const output = await runCli('codex', [
     'exec', '--json', '--ephemeral', '--sandbox', 'read-only',
     '--skip-git-repo-check', prompt,
-  ], isolated);
+  ], isolated, 150000, temp);
   assert.ok(verifiedCodexInvocation(eventsFrom(output)),
     'Codex did not produce a successful structured MCP debug_status tool completion');
 }
