@@ -21,3 +21,7 @@ NATIVE_DAP_PATH and NATIVE_DAP_BINARY. Then run:
 The standard npm test command covers fast offline/protocol tests. Native integration
 runs only in an explicit CI job and never silently skips a missing debugger.
 The fixture crashes intentionally in its own process; never use production targets.
+
+For real-process DAP failure modes (crash, timeout, degraded/malformed replies, parallel requests), run `node --test test/adapter-failure-stress.test.mjs`. The dedicated adapter is a subprocess fixture and never launches a debuggee.
+
+For optional paid, authenticated Claude Code and Codex model-driven MCP invocations, see [authenticated E2E guide](../docs/authenticated-model-e2e.md). Ordinary CI never consumes provider credentials.

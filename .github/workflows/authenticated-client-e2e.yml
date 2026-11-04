@@ -1,0 +1,42 @@
+name: Authenticated Claude and Codex MCP E2E (manual, paid)
+on:
+  workflow_dispatch:
+    inputs:
+      approve_paid_inference:
+        description: "Type APPROVE_PAID_MCP_E2E to explicitly authorize paid model inference"
+        required: true
+        type: string
+      client:
+        description: "Authenticated AI client(s) to exercise"
+        type: choice
+        required: true
+        default: claude
+        options: [claude, codex, both]
+permissions:
+  contents: read
+jobs:
+  model-driven-mcp:
+    if: ${{ inputs.approve_paid_inference == 'APPROVE_PAID_MCP_E2E' }}
+    runs-on: ubuntu-24.04
+    environment: paid-ai-e2e
+    timeout-minutes: 15
+    env:
+      QWEN_PAID_E2E_APPROVAL: ${{ inputs.approve_paid_inference }}
+      QWEN_PAID_E2E_CLIENT: ${{ inputs.client }}
+      CI: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '24'
+      - name: Build and verify credential-free test suite first
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run check
+      - name: Install pinned official Claude and Codex clients
+        run: npm install --global --allow-scripts=@anthropic-ai/claude-code --no-audit --no-fund @anthropic-ai/claude-code@2.1.316 @openai/codex@0.166.0
+      - name: Execute one bounded, read-only model-driven MCP request per selected client
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: node integration/authenticated-model-e2e.mjs

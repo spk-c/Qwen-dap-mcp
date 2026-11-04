@@ -1,4 +1,4 @@
-name: macOS native compatibility (experimental)
+name: macOS native compatibility
 on:
   push:
     branches: [main]
