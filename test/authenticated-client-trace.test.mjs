@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {verifiedClaudeInvocation, verifiedCodexInvocation} from '../integration/mcp-e2e-trace.mjs';
+import {eventsFrom, verifiedClaudeInvocation, verifiedCodexInvocation} from '../integration/mcp-e2e-trace.mjs';
 
 test('authenticated E2E trace verifier rejects model text without an MCP tool call', () => {
   assert.equal(verifiedClaudeInvocation([{type:'assistant',message:{content:[{type:'text',text:'I used debug_status'}]}}]), false);
@@ -10,14 +10,25 @@ test('authenticated E2E trace verifier rejects model text without an MCP tool ca
 test('Claude requires matching structured tool invocation and successful tool result', () => {
   const invocation = {type:'assistant',message:{content:[{type:'tool_use',id:'tool-123',name:'mcp__qwen-dap-mcp__debug_status'}]}};
   assert.equal(verifiedClaudeInvocation([invocation]), false);
+  assert.equal(verifiedClaudeInvocation([{type:'assistant',message:{content:[{type:'tool_use',id:'tool-123',name:'not-mcp__qwen-dap-mcp__debug_status'}]}},{type:'user',message:{content:[{type:'tool_result',tool_use_id:'tool-123',content:'ok'}]}}]),false);
+  assert.equal(verifiedClaudeInvocation([invocation,{type:'user',message:{content:[{type:'tool_result',tool_use_id:'tool-123'}]}}]),false);
   assert.equal(verifiedClaudeInvocation([invocation,{type:'user',message:{content:[{type:'tool_result',tool_use_id:'other',content:'ok'}]}}]), false);
   assert.equal(verifiedClaudeInvocation([invocation,{type:'user',message:{content:[{type:'tool_result',tool_use_id:'tool-123',is_error:true}]}}]), false);
   assert.equal(verifiedClaudeInvocation([invocation,{type:'user',message:{content:[{type:'tool_result',tool_use_id:'tool-123',content:'status ok'}]}}]), true);
 });
 
 test('Codex requires a completed, error-free MCP tool call, not a started event', () => {
-  const item = {type:'mcp_tool_call',server:'qwen-dap-mcp',tool:'debug_status'};
+  const item = {type:'mcp_tool_call',server:'qwen-dap-mcp',tool:'debug_status',status:'completed',result:{content:[{type:'text',text:'status ok'}]}};
   assert.equal(verifiedCodexInvocation([{type:'item.started',item}]), false);
   assert.equal(verifiedCodexInvocation([{type:'item.completed',item:{...item,error:'failure'}}]), false);
+  assert.equal(verifiedCodexInvocation([{type:'item.completed',item:{...item,status:'in_progress'}}]), false);
+  assert.equal(verifiedCodexInvocation([{type:'item.completed',item:{...item,result:undefined}}]), false);
+  assert.equal(verifiedCodexInvocation([{type:'item.completed',item:{...item,result:{isError:true,content:[{type:'text',text:'failure'}]}}}]),false);
   assert.equal(verifiedCodexInvocation([{type:'item.completed',item}]), true);
+});
+
+test('JSONL parser discards malformed lines without inventing successful tool events', () => {
+  const events=eventsFrom('not-json\n'+JSON.stringify({type:'item.completed',item:{type:'agent_message',text:'did it'}})+'\n{broken}\n');
+  assert.equal(events.length,1);
+  assert.equal(verifiedCodexInvocation(events),false);
 });

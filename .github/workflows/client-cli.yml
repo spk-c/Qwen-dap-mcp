@@ -20,6 +20,8 @@ jobs:
           npm run check
       - name: Install pinned official Claude Code and Codex CLIs
         run: npm install --global --allow-scripts=@anthropic-ai/claude-code --no-audit --no-fund @anthropic-ai/claude-code@2.1.316 @openai/codex@0.166.0
+      - name: Verify pinned Claude/Codex flags for opt-in E2E (no inference or credentials)
+        run: node scripts/check-auth-e2e-cli-flags.mjs
       - name: Register and inspect MCP in real CLI executables without account credentials
         shell: bash
         env:
